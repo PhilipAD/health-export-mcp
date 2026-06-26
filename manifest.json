@@ -1,0 +1,51 @@
+{
+  "manifest_version": "0.3",
+  "name": "health-export-ai",
+  "display_name": "Health Export AI",
+  "version": "1.0.0",
+  "description": "Query your Apple Health data — exported by the Health Export AI iOS app to iCloud Drive — from any MCP agent. Local-first, read-only, zero dependencies.",
+  "long_description": "A zero-dependency MCP server that exposes 190 Apple Health metrics (exported by the Health Export AI iOS app into an iCloud Drive folder) to any MCP-compatible agent — Claude Desktop, opencode, Cursor, OpenClaw, Hermes. No bridge, no Docker, no HTTP receiver: the server reads the synced cache file directly over stdio. Tools: get_mcp_status, list_metrics, get_health_metrics, get_trends, compare_periods, get_structured_export, query_health_data.",
+  "author": { "name": "Health Export AI", "url": "https://www.healthexport.dev" },
+  "homepage": "https://www.healthexport.dev",
+  "documentation": "https://www.healthexport.dev",
+  "license": "MIT",
+  "keywords": ["apple health", "healthkit", "mcp", "hrv", "sleep", "steps", "local-first", "agents"],
+  "server": {
+    "type": "node",
+    "entry_point": "server.mjs",
+    "mcp_config": {
+      "command": "node",
+      "args": ["${__dirname}/server.mjs"],
+      "env": {
+        "HEALTH_DATA_DIR": "${user_config.health_data_dir}",
+        "PAIRING_SECRET": "${user_config.pairing_secret}"
+      }
+    }
+  },
+  "tools_generated": false,
+  "tools": [
+    { "name": "get_mcp_status", "description": "Health check: source, metric/workout counts, latest data date. Call first." },
+    { "name": "list_metrics", "description": "Every available metric with unit, day count, date range." },
+    { "name": "get_health_metrics", "description": "Daily values for a metric over a date range, with an aggregate." },
+    { "name": "get_trends", "description": "Recent N-day window vs the prior N days — change, % change, direction." },
+    { "name": "compare_periods", "description": "A metric across two arbitrary date periods (A vs B)." },
+    { "name": "get_structured_export", "description": "Clean JSON for chosen metrics/range for an agent's context." },
+    { "name": "query_health_data", "description": "Natural-language convenience query routed to structured results." }
+  ],
+  "user_config": {
+    "health_data_dir": {
+      "type": "directory",
+      "title": "Apple Health export folder",
+      "description": "The iCloud Drive folder the Health Export AI iOS app writes to (contains .health-cache.json). On a Mac this is typically ~/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents.",
+      "required": true,
+      "default": "${HOME}/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents"
+    },
+    "pairing_secret": {
+      "type": "string",
+      "title": "Pairing code (optional)",
+      "description": "If you turned on Agent pairing in the iOS app (Settings → Agent pairing), paste the code here. Leave blank if pairing is off.",
+      "required": false,
+      "sensitive": true
+    }
+  }
+}

@@ -1,0 +1,7 @@
+node_modules/
+.DS_Store
+*.log
+.health-cache.json
+.health-workouts-cache.json
+.health-pair.json
+deeplinks.txt

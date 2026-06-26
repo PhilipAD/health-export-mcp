@@ -1,0 +1,33 @@
+{
+  "name": "health-export-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Open-source, zero-dependency Model Context Protocol (MCP) server to query Apple Health / HealthKit data (190 metrics) from Claude, ChatGPT, Cursor, OpenClaw, Hermes and any MCP agent.",
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "mcp-server",
+    "apple-health",
+    "healthkit",
+    "ai-agents",
+    "claude",
+    "chatgpt",
+    "cursor",
+    "llm",
+    "health-data",
+    "hrv",
+    "sleep",
+    "quantified-self"
+  ],
+  "homepage": "https://www.healthexport.dev",
+  "repository": { "type": "git", "url": "https://github.com/PhilipAD/health-export-mcp.git" },
+  "bugs": { "url": "https://github.com/PhilipAD/health-export-mcp/issues" },
+  "bin": { "health-export-mcp": "server.mjs" },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node test/integration.mjs"
+  },
+  "author": "Health Export AI",
+  "license": "MIT",
+  "engines": { "node": ">=18" }
+}
