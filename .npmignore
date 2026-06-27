@@ -1,0 +1,4 @@
+assets/
+*.test.mjs
+.imgbotconfig
+.gitignore
