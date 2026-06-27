@@ -129,6 +129,16 @@ Restart the client and try:
 
 ---
 
+## Use cases
+
+- **AI health coach** — let an agent reason over your real HRV, resting heart rate, and sleep to suggest when to push and when to recover, grounded in your actual numbers instead of generic advice.
+- **Training-load analysis** — pull workouts, VO₂ max, and heart-rate trends so your agent can flag overreaching, plot fitness progression, and pace a training block.
+- **Sleep correlations** — have your agent correlate deep-sleep duration against steps, caffeine, late workouts, or screen time to find what actually moves your sleep quality.
+- **Quantified-self dashboards** — feed clean JSON for any metric set and date range straight into a notebook, spreadsheet, or LLM-built dashboard for your own self-tracking.
+- **Personal research & experiments** — run n-of-1 experiments (supplement, routine, or protocol changes) and let an agent compare before/after periods across 190 metrics to see what changed.
+
+---
+
 ## The app that feeds it
 
 <p align="center">
@@ -205,6 +215,18 @@ The iOS app reads Apple Health (read-only) and writes a compact `.health-cache.j
 ```
 Apple Health → Health Export AI (iOS) → .health-cache.json → health-export-mcp → MCP client → you
 ```
+
+---
+
+## Related projects
+
+Other Apple Health MCP servers in the ecosystem — worth a look depending on your setup:
+
+- **[neiltron/apple-health-mcp](https://github.com/neiltron/apple-health-mcp)** — an MCP server that runs SQL-style queries over an Apple Health export.
+- **[the-momentum/apple-health-mcp-server](https://github.com/the-momentum/apple-health-mcp-server)** — an MCP server for analyzing Apple Health data exported from the Health app.
+- **[HealthyApps/health-auto-export-mcp-server](https://github.com/HealthyApps/health-auto-export-mcp-server)** — an MCP server for the Health Auto Export app's data.
+
+**How `health-export-mcp` differs:** zero dependencies, clean structured JSON, 190 Apple Health metrics, and the widest agent support (Claude, Cursor, opencode, OpenClaw, Hermes, VS Code natively — plus ChatGPT/Gemini/Grok/n8n/Home Assistant via webhook).
 
 ---
 
