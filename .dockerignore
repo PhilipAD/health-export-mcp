@@ -1,0 +1,5 @@
+.git
+assets
+*.test.mjs
+.imgbotconfig
+.github
