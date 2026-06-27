@@ -1,0 +1,19 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.PhilipAD/health-export-mcp",
+  "description": "Query 190 Apple Health metrics from any MCP agent — zero-dependency, read-only, local-first.",
+  "repository": {
+    "url": "https://github.com/PhilipAD/health-export-mcp",
+    "source": "github"
+  },
+  "version": "1.0.0",
+  "packages": [
+    {
+      "registryType": "npm",
+      "registryBaseUrl": "https://registry.npmjs.org",
+      "identifier": "health-export-mcp",
+      "version": "1.0.0",
+      "transport": { "type": "stdio" }
+    }
+  ]
+}
