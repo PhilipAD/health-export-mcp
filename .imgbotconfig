@@ -1,3 +1,17 @@
 {
-  "schedule": "never"
+  "ignoredFiles": [
+    "*",
+    "**/*",
+    "*.png",
+    "*.jpg",
+    "*.jpeg",
+    "*.gif",
+    "*.svg",
+    "**/*.png",
+    "**/*.jpg",
+    "**/*.jpeg",
+    "**/*.gif",
+    "**/*.svg",
+    "assets/*"
+  ]
 }
