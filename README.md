@@ -159,6 +159,24 @@ Restart the client and try:
 - **Local-first.** It runs on your machine over stdio. There is **no developer server** in the path.
 - **Optional pairing.** Set `PAIRING_SECRET` to the code the iOS app shows (Settings → Agent pairing) to gate access.
 - **Auditable.** Zero dependencies and a few hundred lines of readable JavaScript — read every line.
+- **Signed releases.** Hosted artifacts are minisign-signed and checksummed — see [Verifying releases](#verifying-releases).
+
+---
+
+## Verifying releases
+
+The server artifacts hosted at `healthexport.dev/mcp/` (used by the [setup skill](https://healthexport.dev/SKILL.md)) are **minisign-signed**, and every download is **SHA-256 checksummed**. The signing public key is published **in this repo** (`minisign.pub`) and in `SKILL.md` — **pin it from here, not only from the website**, so a compromise of the website alone cannot swap both an artifact and its key.
+
+```bash
+PUBKEY='RWS6TxVWSKUblYkx7Db6ZpmvHALwHpznZpjaED/FlZj+PpxSlel0MxHZ'   # = minisign.pub in this repo
+curl -fsSL https://healthexport.dev/mcp/SHA256SUMS         -o SHA256SUMS
+curl -fsSL https://healthexport.dev/mcp/SHA256SUMS.minisig -o SHA256SUMS.minisig
+minisign -Vm SHA256SUMS -P "$PUBKEY" || { echo "signature INVALID — do not run"; exit 1; }   # fail closed
+curl -fsSL https://healthexport.dev/mcp/server.mjs -o server.mjs
+shasum -a 256 --ignore-missing -c SHA256SUMS || { echo "checksum mismatch — do not run"; exit 1; }
+```
+
+The pinned, checksum-verified download above is the locked-down path. `npx health-export-mcp` instead resolves the latest version published to npm at run time (npm provides its own package integrity). Full security overview: <https://healthexport.dev/security>. Report vulnerabilities to **security@healthexport.dev**.
 
 ---
 
