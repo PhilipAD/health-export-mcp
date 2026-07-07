@@ -2,7 +2,9 @@
 
 **Query your Apple Health data from Claude, ChatGPT, Cursor, OpenClaw, Hermes — and any other AI agent.**
 
-`health-export-mcp` is an open-source, **zero-dependency** [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that lets any MCP-compatible AI agent query your **Apple Health / HealthKit** data — **190 metrics** as clean JSON — in plain language. Local-first, read-only, no accounts, and no developer server in the path. It's the open-source server for the [Health Export AI](https://www.healthexport.dev) iOS app.
+`health-export-mcp` is an open-source, **zero-dependency** [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that lets any MCP-compatible AI agent query your **Apple Health / HealthKit** data — **190 metrics** as clean JSON — in plain language. Local-first, read-only, no accounts, and no developer server in the path. It's the open-source server for the [Health Export AI](https://www.healthexport.dev) iOS app — **[available on the App Store](https://apps.apple.com/app/id6784185201)**.
+
+<p align="center"><a href="https://apps.apple.com/app/id6784185201"><img alt="Download Health Export AI on the App Store" src="https://img.shields.io/badge/Download_on_the-App_Store-0D96F6?style=for-the-badge&logo=apple&logoColor=white" height="38" /></a></p>
 
 <p align="center">
   <img alt="MCP" src="https://img.shields.io/badge/Model_Context_Protocol-server-6E56CF" />
