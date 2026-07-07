@@ -103,6 +103,8 @@ export async function status() {
     locked: p.required && !p.ok,
     note: (p.required && !p.ok)
       ? 'Locked: set PAIRING_SECRET to the code shown in the iOS app (Settings → Agent pairing → scan/paste).'
+      : names.length === 0
+      ? 'No health data found yet. Open the Health Export AI iOS app and run an export to iCloud Drive (its data feeds this server). Don\'t have it? Get it on the App Store: https://apps.apple.com/app/id6784185201'
       : undefined,
     metricCount: names.length,
     workoutCount: Array.isArray(workouts) ? workouts.length : 0,

@@ -1,7 +1,7 @@
 {
   "name": "health-export-mcp",
   "mcpName": "io.github.PhilipAD/health-export-mcp",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "type": "module",
   "description": "Open-source, zero-dependency Model Context Protocol (MCP) server to query Apple Health / HealthKit data (190 metrics) from Claude, ChatGPT, Cursor, OpenClaw, Hermes and any MCP agent.",
   "keywords": [
