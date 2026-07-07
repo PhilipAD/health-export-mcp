@@ -151,6 +151,8 @@ Restart the client and try:
 
 <p align="center"><sub><a href="https://www.healthexport.dev">Health Export AI</a> — exports your Apple Health to your agent, automatically.</sub></p>
 
+<p align="center"><a href="https://apps.apple.com/app/id6784185201"><b>Download on the App Store →</b></a></p>
+
 ---
 
 ## Privacy & security
