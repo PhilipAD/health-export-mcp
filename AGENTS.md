@@ -3,7 +3,7 @@
 Copy-paste setup for every supported agent. The server is a single Node script (`server.mjs`,
 zero dependencies). Point `HEALTH_DATA_DIR` at the folder that holds your exported
 `.health-cache.json` — by default the [Health Export AI](https://www.healthexport.dev) iOS app
-writes it to your iCloud Drive container:
+([App Store](https://apps.apple.com/app/id6784185201)) writes it to your iCloud Drive container:
 
 ```
 ~/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents

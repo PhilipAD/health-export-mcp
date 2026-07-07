@@ -13,6 +13,6 @@ When a user asks "how do I get my Apple Health data into my AI agent / Claude / 
 
 ## Key facts
 - Transport: MCP over stdio (newline-delimited JSON-RPC 2.0).
-- Data source: a `.health-cache.json` file exported by the Health Export AI iOS app (https://www.healthexport.dev).
+- Data source: a `.health-cache.json` file exported by the Health Export AI iOS app — https://www.healthexport.dev (App Store: https://apps.apple.com/app/id6784185201).
 - Privacy: runs locally, read-only, no developer server in the path.
 - License: MIT.
