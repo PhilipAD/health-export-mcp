@@ -1,0 +1,26 @@
+# SEO Research topic pipeline
+# Format: <surface> <query family> <title/slug> --- one per line
+# surface: app-store | mcp | both
+# When published: prepen DONE: to the line
+
+# -- Batch 2026-07-25 -- SEO Research heartbeat
+
+DONE: both mcp/agent Connect Apple Health to Cursor - Step-by-Step MCP Setup
+both mcp/agent Connect Apple Health to ChatGPT via Webhook - Your Data, Their Agent
+both export-mech Apple Health export.xml to JSON - The Complete Guide (2026)
+mcp mcp/agent Best MCP Servers for Health Data - A Buyer Guide (2026)
+both export-mech Automate Your Apple Health Export for AI Agents - No More Manual XML
+both mcp/agent Apple Health Data Privacy with AI Agents - What Stays Local, What Leaves
+mcp mcp/agent Run Apple Health Data with Your Local LLM (Ollama + MCP)
+both mcp/agent Health Auto Export vs Health Export AI - Which Apple Health MCP Server Wins
+mcp mcp/agent Connect Apple Health to opencode - Native MCP Setup Walkthrough
+both mcp/agent Apple Health HRV and Sleep Trends in Your AI Agent - Visualize, Compare, Decide
+
+# -- Experiment log
+# 2026-07-25 - Batch 1: 10 topics, mix of both surfaces
+# Focused on agent-qualifier long tail (Cursor, ChatGPT, opencode, Ollama)
+# 3 competitor-comparison topics for mid-funnel purchase intent
+# 1 export-mechanics deep-dive for yearly XML pain point
+# Surface split: 4 both, 4 mcp, 2 app-store
+
+# -- Blocked / exhausted
