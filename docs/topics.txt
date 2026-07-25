@@ -6,8 +6,8 @@
 # -- Batch 2026-07-25 -- SEO Research heartbeat
 
 DONE: both mcp/agent Connect Apple Health to Cursor - Step-by-Step MCP Setup
-both mcp/agent Connect Apple Health to ChatGPT via Webhook - Your Data, Their Agent
-both export-mech Apple Health export.xml to JSON - The Complete Guide (2026)
+DONE: both mcp/agent Connect Apple Health to ChatGPT via Webhook - Your Data, Their Agent
+DONE: both export-mech Apple Health export.xml to JSON - The Complete Guide (2026)
 mcp mcp/agent Best MCP Servers for Health Data - A Buyer Guide (2026)
 both export-mech Automate Your Apple Health Export for AI Agents - No More Manual XML
 both mcp/agent Apple Health Data Privacy with AI Agents - What Stays Local, What Leaves

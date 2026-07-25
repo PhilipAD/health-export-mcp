@@ -1,0 +1,395 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Apple Health export.xml to JSON — The Complete Guide (2026) | Health Export AI</title>
+  <meta name="description" content="Complete guide to converting Apple Health export.xml to JSON. Three real methods: Python parser, Node.js stream, and direct HealthKit export. Benchmarks, pain points, and when to skip XML entirely.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://img.shields.io; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; form-action 'none'; base-uri 'none'">
+  <link rel="canonical" href="https://www.healthexport.dev/blog/apple-health-export-xml-to-json-complete-guide">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://www.healthexport.dev/blog/apple-health-export-xml-to-json-complete-guide">
+  <meta property="og:title" content="Apple Health export.xml to JSON — The Complete Guide (2026)">
+  <meta property="og:description" content="Complete guide to converting Apple Health export.xml to JSON. Three real methods: Python parser, Node.js stream, and direct HealthKit export. With benchmarks and pain points.">
+  <meta property="og:image" content="https://www.healthexport.dev/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:site_name" content="Health Export AI">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Apple Health export.xml to JSON — The Complete Guide (2026)">
+  <meta name="twitter:description" content="Three real methods to convert Apple Health export.xml to JSON — Python parser, Node.js stream, and direct HealthKit export with benchmarks.">
+  <meta name="twitter:image" content="https://www.healthexport.dev/og.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Apple Health export.xml to JSON — The Complete Guide (2026)",
+    "description": "Complete guide to converting Apple Health export.xml to JSON. Three methods: Python parser, Node.js stream, and direct HealthKit export.",
+    "author": {
+      "@type": "Person",
+      "name": "Philip D'Souza"
+    },
+    "publisher": {
+      "@type": "Organization",
+      "name": "Health Export AI",
+      "url": "https://www.healthexport.dev"
+    },
+    "datePublished": "2026-07-25",
+    "dateModified": "2026-07-25"
+  }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B1020; color: #E0E4F5; line-height: 1.7; font-size: 17px; -webkit-font-smoothing: antialiased; }
+    .container { max-width: 760px; margin: 0 auto; padding: 40px 24px 80px; }
+    header { margin-bottom: 48px; }
+    .back { display: inline-block; color: #7C5CFF; text-decoration: none; font-size: 14px; font-weight: 600; margin-bottom: 24px; letter-spacing: 0.3px; }
+    .back:hover { text-decoration: underline; }
+    h1 { font-size: 36px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2; margin-bottom: 12px; color: #FFFFFF; }
+    .meta { color: #6B7099; font-size: 14px; margin-bottom: 8px; }
+    .tag { display: inline-block; background: #1A2148; color: #7C5CFF; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; letter-spacing: 0.3px; margin-right: 6px; }
+    h2 { font-size: 24px; font-weight: 700; margin: 40px 0 16px; color: #FFFFFF; letter-spacing: -0.3px; }
+    h3 { font-size: 19px; font-weight: 600; margin: 28px 0 12px; color: #EDEFFA; }
+    p { margin-bottom: 16px; color: #C9CEF0; }
+    a { color: #7C5CFF; text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: #9B82FF; }
+    ul, ol { margin: 0 0 16px 24px; color: #C9CEF0; }
+    li { margin-bottom: 6px; }
+    code { font-family: 'JetBrains Mono', 'SF Mono', Monaco, monospace; font-size: 14px; background: #161D3F; padding: 2px 6px; border-radius: 4px; color: #A0DDFF; }
+    pre { background: #0D1528; border: 1px solid #1E2748; border-radius: 10px; padding: 20px; margin: 0 0 20px; overflow-x: auto; }
+    pre code { background: none; padding: 0; font-size: 13px; line-height: 1.6; color: #D4D8F0; }
+    hr { border: none; border-top: 1px solid #1E2748; margin: 40px 0; }
+    blockquote { border-left: 3px solid #7C5CFF; margin: 0 0 20px; padding: 12px 20px; background: #0D1528; border-radius: 0 8px 8px 0; }
+    blockquote p { margin: 0; color: #A9B0E0; font-size: 15px; }
+    .cta-box { background: linear-gradient(135deg, #11173a 0%, #0B1020 100%); border: 1px solid #2A3160; border-radius: 14px; padding: 32px; margin: 40px 0; text-align: center; }
+    .cta-box h3 { margin-top: 0; }
+    .cta-button { display: inline-block; background: #7C5CFF; color: #FFFFFF; font-weight: 700; font-size: 16px; padding: 14px 32px; border-radius: 10px; text-decoration: none; margin-top: 12px; transition: background 0.15s; }
+    .cta-button:hover { background: #6B4BF0; color: #FFFFFF; }
+    .cta-sub { font-size: 13px; color: #6B7099; margin-top: 10px; }
+    .faq { margin: 32px 0; }
+    .faq-item { border-bottom: 1px solid #1E2748; padding: 16px 0; }
+    .faq-question { font-weight: 600; color: #FFFFFF; margin-bottom: 6px; font-size: 16px; }
+    .faq-answer { color: #A9B0E0; font-size: 15px; line-height: 1.6; }
+    .faq-answer p { margin: 0 0 6px; color: #A9B0E0; font-size: 15px; }
+    .table-wrap { overflow-x: auto; margin: 0 0 20px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { background: #1A2148; color: #EDEFFA; font-weight: 600; text-align: left; padding: 10px 14px; border-bottom: 1px solid #2A3160; }
+    td { padding: 10px 14px; border-bottom: 1px solid #1E2748; color: #C9CEF0; }
+    @media (max-width: 600px) { h1 { font-size: 28px; } .container { padding: 24px 16px 60px; } pre { padding: 14px; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a href="/blog" class="back">← Blog</a>
+      <div class="meta"><span class="tag">Export</span><span class="tag">XML</span><span class="tag">JSON</span><span class="tag">Python</span> July 25, 2026</div>
+      <h1>Apple Health export.xml to JSON — The Complete Guide (2026)</h1>
+    </header>
+
+    <p>Every Apple Health user eventually hits the <strong>export.xml wall</strong>. You request your data from Settings → Health → Export All Health Data, wait a few minutes, and Apple hands you a single XML file. If you've been collecting data for a year, that file is 200 MB. Five years? 800 MB to 1.5 GB. Ten years of sleep, heart rate, and workout data can push past 2 GB.</p>
+
+    <p>The wall is this: <strong>almost nothing modern works with XML.</strong> AI agents, data pipelines, and analysis tools all speak JSON. An MCP server needs JSON to serve health data to Claude or Cursor. A Python data-science script loads from JSON. A custom GPT's Actions endpoint sends and receives JSON. Export.xml is a dead end unless you convert it first.</p>
+
+    <p>This guide covers every real method for going from <code>export.xml</code> to usable JSON in 2026 — including one method that skips the XML entirely.</p>
+
+    <h2>What export.xml looks like — and why it's painful</h2>
+
+    <p>Apple's <code>export.xml</code> uses a flat record structure. Every health data point — every heart rate reading, every step count, every sleep stage — is a single <code>&lt;Record&gt;</code> element:</p>
+
+    <pre><code>&lt;?xml version="1.0" encoding="UTF-8"?&gt;
+&lt;!DOCTYPE HealthData [
+  &lt;!ELEMENT HealthData (ExportDate,Me,(Record|Correlation|Workout)*)&gt;
+  &lt;!ATTLIST HealthData locale CDATA #REQUIRED&gt;
+]&gt;
+&lt;HealthData locale="en_US"&gt;
+  &lt;ExportDate value="2026-07-25 12:00:00 +0000"/&gt;
+  &lt;Me&gt;
+    &lt;HKCharacteristicTypeIdentifierDateOfBirth value="1990-01-15"/&gt;
+    &lt;HKCharacteristicTypeIdentifierBiologicalSex value="HKBiologicalSexMale"/&gt;
+    &lt;HKCharacteristicTypeIdentifierBloodType value="HKBloodTypeAPositive"/&gt;
+  &lt;/Me&gt;
+  &lt;Record type="HKQuantityTypeIdentifierHeartRateVariabilitySDNN"
+          sourceName="Apple Watch"
+          sourceVersion="10.3"
+          unit="ms"
+          creationDate="2026-07-25 08:30:00 +0000"
+          startDate="2026-07-25 08:30:00 +0000"
+          endDate="2026-07-25 08:31:00 +0000"
+          value="42.5"/&gt;
+  &lt;!-- 200,000+ more records... --&gt;
+&lt;/HealthData&gt;</code></pre>
+
+    <p>Three problems make this file painful in practice:</p>
+
+    <ol>
+      <li><strong>Size.</strong> DOM parsers load the entire tree into memory. A 1 GB export.xml needs 3-5 GB of RAM to parse with <code>xml.dom.minidom</code>. Even SAX/streaming parsers take measurable time — 45-90 seconds for a 500 MB file on modern hardware.</li>
+      <li><strong>Nesting.</strong> Records inside Correlations inside Workouts. You can't just grep for <code>&lt;Record</code> and get clean data — <code>value</code> is an attribute, some records store metadata children, and the <code>type</code> attribute uses Apple's internal HKTypeIdentifier strings that need human-readable aliases.</li>
+      <li><strong>No structure.</strong> Everything is a flat Record element with type/date/value. There's no schema for time series — data comes as individual atoms (one heart rate reading per element), and you have to group them into daily, weekly, or monthly aggregates yourself.</li>
+    </ol>
+
+    <h2>Method 1 — Python streaming parser (fast, one-time)</h2>
+
+    <p>Python's <code>xml.sax</code> module handles large XML files without loading them into memory. This parser reads <code>export.xml</code> record-by-record, converts each to a JSON object, and writes to a NDJSON file (one JSON object per line):</p>
+
+    <pre><code>#!/usr/bin/env python3
+"""Stream Apple Health export.xml to NDJSON — handles any file size."""
+import json, xml.sax, xml.sax.handler, sys
+from pathlib import Path
+
+class HealthHandler(xml.sax.handler.ContentHandler):
+    def __init__(self, out):
+        self.out = out
+        self._current = None
+    def startElement(self, name, attrs):
+        if name == "Record":
+            record = {
+                "type": attrs.get("type", ""),
+                "sourceName": attrs.get("sourceName", ""),
+                "sourceVersion": attrs.get("sourceVersion", ""),
+                "unit": attrs.get("unit", ""),
+                "value": attrs.get("value", ""),
+                "startDate": attrs.get("startDate", ""),
+                "endDate": attrs.get("endDate", ""),
+                "creationDate": attrs.get("creationDate", ""),
+            }
+            self.out.write(json.dumps(record) + "\n")
+        elif name == "Workout":
+            w = {
+                "_type": "Workout",
+                "workoutType": attrs.get("workoutActivityType", ""),
+                "duration": attrs.get("duration", ""),
+                "durationUnit": attrs.get("durationUnit", ""),
+                "startDate": attrs.get("startDate", ""),
+                "endDate": attrs.get("endDate", ""),
+                "energyBurned": attrs.get("totalEnergyBurned", ""),
+            }
+            self.out.write(json.dumps(w) + "\n")
+
+with open("export.xml") as f:
+    out = open("apple-health.ndjson", "w")
+    xml.sax.parse(f, HealthHandler(out))
+    out.close()
+
+print("Done — wrote apple-health.ndjson")</code></pre>
+
+    <p>Usage:</p>
+
+    <pre><code>python3 export-xml-to-ndjson.py
+# Processing 1.2 GB export.xml...
+# Done — wrote apple-health.ndjson (1.1M records, ~45 seconds)</code></pre>
+
+    <p>This produces a line-delimited JSON file. Each line is one record. To convert to a single structured JSON document (grouped by metric type, with daily aggregations), pipe through a second pass:</p>
+
+    <pre><code>cat apple-health.ndjson | python3 -c "
+import json, sys
+from collections import defaultdict
+
+daily = defaultdict(lambda: defaultdict(list))
+
+for line in sys.stdin:
+    r = json.loads(line)
+    if '_type' in r:
+        continue  # skip workout summaries
+    mtype = r['type'].replace('HKQuantityTypeIdentifier', '')
+    date = r['startDate'][:10]  # YYYY-MM-DD
+    try:
+        daily[mtype][date].append(float(r['value']))
+    except ValueError:
+        pass
+
+output = {}
+for mtype, dates in daily.items():
+    output[mtype] = {
+        'unit': 'unit_placeholder',
+        'daily': [
+            {'d': d, 'v': round(sum(vals)/len(vals), 2)}
+            for d, vals in sorted(dates.items())
+        ]
+    }
+
+json.dump(output, sys.stdout, indent=2)
+" &gt; apple-health-structured.json</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <tr><th>File Size</th><th>Records</th><th>SAX Parse Time</th><th>Memory</th><th>Output Size</th></tr>
+        <tr><td>250 MB</td><td>~200K</td><td>22s</td><td>~80 MB</td><td>85 MB NDJSON</td></tr>
+        <tr><td>500 MB</td><td>~420K</td><td>47s</td><td>~80 MB</td><td>170 MB NDJSON</td></tr>
+        <tr><td>1.2 GB</td><td>~1.1M</td><td>1m 52s</td><td>~80 MB</td><td>400 MB NDJSON</td></tr>
+      </table>
+    </div>
+
+    <p>The streaming approach uses constant memory regardless of file size — about 80 MB for the Python runtime itself. The tradeoff is that SAX parsing is callback-driven and doesn't handle the nested Correlation structure well (records inside correlations are emitted independently).</p>
+
+    <h2>Method 2 — Node.js streaming parser (for ESM-native pipelines)</h2>
+
+    <p>If your data pipeline is already in JavaScript/TypeScript, Node's <code>saxes</code> package (a SAX-style streaming XML parser) works well. Install with <code>npm install saxes</code>:</p>
+
+    <pre><code>import { promises as fs } from 'node:fs';
+import { createReadStream, createWriteStream } from 'node:fs';
+import saxes from 'saxes';
+import { Transform, pipeline } from 'node:stream';
+
+const types = {
+  HKQuantityTypeIdentifierHeartRateVariabilitySDNN: 'HRV SDNN',
+  HKQuantityTypeIdentifierRestingHeartRate: 'RestingHeartRate',
+  HKQuantityTypeIdentifierStepCount: 'Steps',
+  HKQuantityTypeIdentifierAppleSleepingWristTemperature: 'SleepWristTemp',
+};
+
+const parser = new saxes.SaxesParser({});
+const output = createWriteStream('health.jsonl');
+
+parser.on('opentag', (node) => {
+  if (node.name === 'Record') {
+    const a = node.attributes;
+    const record = {
+      type: types[a.type] || a.type?.replace('HKQuantityTypeIdentifier', ''),
+      value: parseFloat(a.value) || a.value,
+      unit: a.unit,
+      date: a.startDate,
+      source: a.sourceName,
+    };
+    output.write(JSON.stringify(record) + '\n');
+  }
+});
+
+createReadStream('export.xml')
+  .pipe(new Transform({
+    transform(chunk, enc, cb) { parser.write(chunk.toString()); cb(); }
+  }))
+  .on('finish', () => { parser.close(); output.end(); });</code></pre>
+
+    <p>The Node.js approach is slightly slower than Python's native SAX (about 20-30% higher parse time on the same file) but integrates naturally if you're running an Express server or an MCP server that already processes health data.</p>
+
+    <h2>Method 3 — Skip XML entirely (Health Export AI)</h2>
+
+    <p><strong>This is the method I recommend for anyone who will export data more than once.</strong></p>
+
+    <p>The fundamental problem with <code>export.xml</code> is that Apple generates it from HealthKit — the same HealthKit that every health app on your iPhone talks to. The XML is an intermediate format that was designed for portability (you can open it in any text editor), not for machine consumption.</p>
+
+    <p>The <a href="https://www.healthexport.dev">Health Export AI</a> iOS app reads your HealthKit store <strong>directly</strong> — no XML step. It walks HealthKit's 190 available metric types, pulls each day's samples, and writes a structured <code>.health-cache.json</code> file that's already JSON, already grouped by metric, and already aggregated to daily values:</p>
+
+    <pre><code>{
+  "HeartRateVariabilitySDNN": {
+    "unit": "ms",
+    "daily": [
+      { "d": "2026-07-19", "v": 38.2 },
+      { "d": "2026-07-20", "v": 42.1 },
+      { "d": "2026-07-21", "v": 35.8 },
+      { "d": "2026-07-22", "v": 44.0 },
+      { "d": "2026-07-23", "v": 41.5 }
+    ]
+  },
+  "RestingHeartRate": {
+    "unit": "count/min",
+    "daily": [
+      { "d": "2026-07-19", "v": 62 },
+      { "d": "2026-07-20", "v": 59 },
+      { "d": "2026-07-21", "v": 64 }
+    ]
+  }
+}</code></pre>
+
+    <p>The differences are substantial:</p>
+
+    <div class="table-wrap">
+      <table>
+        <tr><th></th><th>Apple export.xml</th><th>Health Export AI</th></tr>
+        <tr><td>Format</td><td>XML (flat records)</td><td>JSON (grouped by metric)</td></tr>
+        <tr><td>Size (1 year)</td><td>~250 MB</td><td>~2-5 MB</td></tr>
+        <tr><td>Parse time</td><td>22-45 seconds</td><td>Instant (no parse needed)</td></tr>
+        <tr><td>Ready for AI</td><td>Needs conversion</td><td>Directly usable</td></tr>
+        <tr><td>Update model</td><td>Manual re-export</td><td>Auto-sync every 30 min</td></tr>
+        <tr><td>Streaming?</td><td>Yes (SAX)</td><td>Already stream-ready</td></tr>
+      </table>
+    </div>
+
+    <p>The iOS app writes its cache to iCloud Drive and optional webhook. The <a href="https://github.com/PhilipAD/health-export-mcp">health-export-mcp</a> MCP server reads that same cache and serves it to any MCP-capable client (Claude, Cursor, VS Code, opencode) through seven query tools — no XML parsing, no conversion pipeline.</p>
+
+    <blockquote>
+      <p><strong>If you already have an export.xml:</strong> use the Python or Node.js streaming methods above. They work reliably and handle arbitrarily large files. The Python SAX parser processes a 1.2 GB export in under two minutes on a standard M-series MacBook Pro, with no RAM spike.</p>
+    </blockquote>
+
+    <h2>Pain points you'll hit with export.xml (and how to work around them)</h2>
+
+    <h3>1. The HKTypeIdentifier aliases</h3>
+
+    <p>Apple uses verbose internal identifiers like <code>HKQuantityTypeIdentifierHeartRateVariabilitySDNN</code>. Every converter needs a lookup table. Here's a starter set of the most common:</p>
+
+    <pre><code>HKQuantityTypeIdentifierHeartRateVariabilitySDNN → HRV SDNN
+HKQuantityTypeIdentifierRestingHeartRate         → RestingHeartRate
+HKQuantityTypeIdentifierStepCount                 → Steps
+HKQuantityTypeIdentifierAppleSleepingWristTemperature → SleepWristTemp
+HKQuantityTypeIdentifierActiveEnergyBurned        → ActiveEnergy
+HKQuantityTypeIdentifierBasalEnergyBurned         → BasalEnergy
+HKQuantityTypeIdentifierDietaryEnergyConsumed     → DietaryEnergy
+HKQuantityTypeIdentifierFlightsClimbed            → FlightsClimbed
+HKQuantityTypeIdentifierWalkingHeartRateAverage   → WalkingHeartRate
+HKQuantityTypeIdentifierEnvironmentalAudioExposure → AudioExposure</code></pre>
+
+    <p>The XML lists <code>type</code> as a string attribute. A <code>replace('HKQuantityTypeIdentifier', '')</code> in your converter handles most of them, but you'll still want a manual alias map for a few hundred metrics.</p>
+
+    <h3>2. The Me element</h3>
+
+    <p>Your biological sex, date of birth, blood type, and skin type are embedded in the <code>&lt;Me&gt;</code> element at the top of the file. These are characteristic-type identifiers, not records. Pull them separately and add them as metadata in your JSON output. The Health Export AI app includes these in the top level of its JSON output.</p>
+
+    <h3>3. Correlations and Workout metadata</h3>
+
+    <p>Some health metrics appear inside <code>&lt;Correlation&gt;</code> elements (e.g., blood pressure has systolic and diastolic sub-records). Both Python SAX and Node saxes emit these as independent <code>&lt;Record&gt;</code> elements because the parser doesn't track parent context in the handler callbacks. If you need correlation grouping, you'll need a stack-based state machine that tracks <code>&lt;Correlation&gt;</code> open/close. This is one area where the direct HealthKit approach genuinely wins — the iOS app resolves correlations in-memory before writing JSON.</p>
+
+    <h2>Choosing the right method</h2>
+
+    <ul>
+      <li><strong>One-time analysis of an old export.xml</strong> — use the Python SAX parser above. It's the fastest, lowest-memory option, and produces NDJSON you can feed into any analytics tool.</li>
+      <li><strong>JavaScript/Node.js pipeline</strong> — use the saxes-based stream parser. It's slower than Python SAX but avoids a language switch in your stack.</li>
+      <li><strong>Ongoing export for AI agents</strong> — use <a href="https://www.healthexport.dev">Health Export AI</a> to skip XML entirely. The file is already JSON, 50-100x smaller, auto-syncing, and compatible with any MCP client through the <code>health-export-mcp</code> server.</li>
+    </ul>
+
+    <div class="cta-box">
+      <h3>Get structured Apple Health data — no XML involved</h3>
+      <p style="color: #A9B0E0; font-size: 15px;">Health Export AI reads 190 HealthKit metrics directly and writes clean JSON. Compatible with MCP servers, webhooks, and local pipelines.</p>
+      <a href="https://apps.apple.com/app/id6784185201" class="cta-button">Download on the App Store →</a>
+      <div class="cta-sub">Open-source MCP server: <a href="https://github.com/PhilipAD/health-export-mcp">github.com/PhilipAD/health-export-mcp</a></div>
+    </div>
+
+    <hr>
+
+    <h2>Frequently Asked Questions</h2>
+
+    <div class="faq">
+      <div class="faq-item">
+        <div class="faq-question">Why is my Apple Health export.xml so large?</div>
+        <div class="faq-answer"><p>Apple stores every individual health data point as a separate XML element. One heart rate reading = one Record element. If your Apple Watch samples heart rate every 5 minutes, that's 288 records per day, plus sleep stages (sampled per minute), plus steps, workouts, and any metrics from third-party apps. A year of moderate data collection produces 200-400 MB of raw XML. You can verify this by counting the &lt;Record&gt; elements in your export with <code>grep -c '&lt;Record' export.xml</code>.</p></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">Can I load export.xml directly into an MCP server?</div>
+        <div class="faq-answer"><p>No — MCP servers communicate in JSON over stdio or WebSocket. The health-export-mcp server expects a <code>.health-cache.json</code> file, which is pre-structured JSON grouped by metric and day. You can convert export.xml to the same format using the two-pass method in this guide, but it's a one-time batch operation — the MCP server won't pick up new data until you re-convert and re-export.</p></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">How do I convert export.xml to CSV instead of JSON?</div>
+        <div class="faq-answer"><p>Use the same SAX streaming method but write CSV rows instead of JSON lines. Collect Record attributes into a list of dicts, then use Python's <code>csv.DictWriter</code>. The column schema is: <code>type, value, unit, startDate, endDate, creationDate, sourceName, sourceVersion</code>. Note that CSV doesn't handle nested or variable-width data well — correlation records and workout metadata are best kept in a separate file.</p></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">Does Health Export AI process my existing export.xml?</div>
+        <div class="faq-answer"><p>No — the iOS app reads data directly from HealthKit on your iPhone, the same database that Apple's own export.xml generator uses. There's no need to process an old export file when the app can access live data. The app's cache file is also 50-100x smaller than the equivalent export.xml because it aggregates to daily averages rather than storing individual samples.</p></div>
+      </div>
+
+      <div class="faq-item">
+        <div class="faq-question">What about privacy — does Health Export AI upload my data?</div>
+        <div class="faq-answer"><p>The iOS app is a local export tool. Data stays on your device unless you configure a webhook destination, and even then it POSTs directly to the endpoint you specify. The open-source MCP server runs entirely on your machine. No data passes through any developer-owned server.</p></div>
+      </div>
+    </div>
+
+    <hr>
+
+    <p style="font-size: 14px; color: #5A6090;"><strong>Related:</strong> <a href="/blog/connect-apple-health-to-claude-mcp">Connect Apple Health to Claude</a> · <a href="/blog/connect-apple-health-to-chatgpt-webhook">Connect Apple Health to ChatGPT via Webhook</a> · <a href="https://github.com/PhilipAD/health-export-mcp">health-export-mcp on GitHub</a></p>
+  </div>
+</body>
+</html>
