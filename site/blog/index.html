@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Blog — Health Export AI</title>
+  <meta name="description" content="Technical guides and articles about exporting Apple Health data to AI agents via MCP and webhook.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; form-action 'none'; base-uri 'none'">
+  <link rel="canonical" href="https://www.healthexport.dev/blog">
+  <meta property="og:type" content="website">
+  <meta property="og:url" content="https://www.healthexport.dev/blog">
+  <meta property="og:title" content="Blog — Health Export AI">
+  <meta property="og:description" content="Technical guides about exporting Apple Health data to AI agents via MCP and webhook.">
+  <meta property="og:image" content="https://www.healthexport.dev/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:site_name" content="Health Export AI">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Blog — Health Export AI">
+  <meta name="twitter:description" content="Technical guides about exporting Apple Health data to AI agents via MCP and webhook.">
+  <meta name="twitter:image" content="https://www.healthexport.dev/og.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "Blog",
+    "name": "Health Export AI Blog",
+    "description": "Technical guides about exporting Apple Health data to AI agents.",
+    "url": "https://www.healthexport.dev/blog",
+    "publisher": {
+      "@type": "Organization",
+      "name": "Health Export AI",
+      "url": "https://www.healthexport.dev"
+    },
+    "blogPost": [
+      {
+        "@type": "BlogPosting",
+        "headline": "Apple Health export.xml to JSON — The Complete Guide (2026)",
+        "url": "https://www.healthexport.dev/blog/apple-health-export-xml-to-json-complete-guide",
+        "datePublished": "2026-07-26",
+        "description": "Three real methods to convert Apple Health export.xml to JSON — Python SAX parser, Node.js streaming parser, and direct HealthKit export. With benchmarks, code samples, and pain points."
+      },
+      {
+        "@type": "BlogPosting",
+        "headline": "Connect Apple Health to ChatGPT via Webhook — Your Data, Their Agent",
+        "url": "https://www.healthexport.dev/blog/connect-apple-health-to-chatgpt-webhook",
+        "datePublished": "2026-07-26",
+        "description": "Step-by-step guide to sending Apple Health data to ChatGPT via webhook using Health Export AI. Build custom GPTs that answer questions from your real HRV, sleep, and activity data."
+      },
+      {
+        "@type": "BlogPosting",
+        "headline": "Best MCP Servers for Health Data — A Buyer's Guide (2026)",
+        "url": "https://www.healthexport.dev/blog/best-mcp-servers-health-data-buyer-guide-2026",
+        "datePublished": "2026-07-26",
+        "description": "Side-by-side comparison of every MCP server for personal health data: health-export-mcp, apple-health-mcp-unofficial, DuckDB-based servers, and ghurt.org."
+      }
+    ]
+  }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B1020; color: #E0E4F5; line-height: 1.6; font-size: 16px; -webkit-font-smoothing: antialiased; }
+    .container { max-width: 800px; margin: 0 auto; padding: 40px 24px 80px; }
+    h1 { font-size: 32px; font-weight: 800; letter-spacing: -0.5px; margin-bottom: 8px; color: #FFFFFF; }
+    .subtitle { color: #6B7099; font-size: 15px; margin-bottom: 40px; }
+    .post-card { background: #0D1528; border: 1px solid #1E2748; border-radius: 12px; padding: 24px; margin-bottom: 20px; transition: border-color 0.15s; }
+    .post-card:hover { border-color: #2A3160; }
+    .post-card h2 { margin: 0 0 6px; }
+    .post-card h2 a { color: #FFFFFF; text-decoration: none; font-size: 20px; font-weight: 700; }
+    .post-card h2 a:hover { color: #7C5CFF; }
+    .post-card .meta { color: #6B7099; font-size: 13px; margin-bottom: 8px; }
+    .post-card p { color: #A9B0E0; font-size: 14px; line-height: 1.6; }
+    .tag { display: inline-block; background: #1A2148; color: #7C5CFF; font-size: 11px; font-weight: 600; padding: 2px 8px; border-radius: 10px; letter-spacing: 0.3px; margin-right: 4px; }
+    .back-link { display: inline-block; color: #7C5CFF; text-decoration: none; font-size: 14px; font-weight: 600; margin-bottom: 24px; }
+    .back-link:hover { text-decoration: underline; }
+    @media (max-width: 600px) { .container { padding: 24px 16px 60px; } h1 { font-size: 26px; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <a href="https://www.healthexport.dev" class="back-link">← Home</a>
+    <h1>Blog</h1>
+    <p class="subtitle">Technical guides for connecting Apple Health data to your AI agents.</p>
+
+    <div class="post-card">
+      <div class="meta"><span class="tag">Export</span><span class="tag">XML</span><span class="tag">JSON</span><span class="tag">Python</span> July 26, 2026</div>
+      <h2><a href="/blog/apple-health-export-xml-to-json-complete-guide">Apple Health export.xml to JSON — The Complete Guide (2026)</a></h2>
+      <p>Three real methods to convert Apple Health export.xml to JSON — Python SAX streaming parser, Node.js saxes stream, and direct HealthKit export. With benchmarks, code samples, and pain points.</p>
+    </div>
+
+    <div class="post-card">
+      <div class="meta"><span class="tag">Webhook</span><span class="tag">ChatGPT</span><span class="tag">Apple Health</span> July 26, 2026</div>
+      <h2><a href="/blog/connect-apple-health-to-chatgpt-webhook">Connect Apple Health to ChatGPT via Webhook — Your Data, Their Agent</a></h2>
+      <p>Send Apple Health data to ChatGPT via webhook. Build custom GPTs that answer questions from your real HRV, sleep, and activity data — no export.xml, no CSV files, no manual steps.</p>
+    </div>
+
+    <div class="post-card">
+      <div class="meta"><span class="tag">MCP</span><span class="tag">Comparison</span><span class="tag">Health Data</span> July 26, 2026</div>
+      <h2><a href="/blog/best-mcp-servers-health-data-buyer-guide-2026">Best MCP Servers for Health Data — A Buyer's Guide (2026)</a></h2>
+      <p>Side-by-side comparison of every MCP server for Apple Health, Garmin, Oura, and Whoop — health-export-mcp, DuckDB-based servers, apple-health-mcp-unofficial, and ghurt.org.</p>
+    </div>
+  </div>
+</body>
+</html>
