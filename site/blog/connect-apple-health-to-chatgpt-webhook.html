@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connect Apple Health to ChatGPT via Webhook — Your Data, Their Agent | Health Export AI</title>
+  <meta name="description" content="Step-by-step guide to sending your Apple Health data to ChatGPT via webhook using Health Export AI. Build custom GPTs that answer questions from your real HRV, sleep, and activity data.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://img.shields.io; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; form-action 'none'; base-uri 'none'">
+  <link rel="canonical" href="https://www.healthexport.dev/blog/connect-apple-health-to-chatgpt-webhook">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://www.healthexport.dev/blog/connect-apple-health-to-chatgpt-webhook">
+  <meta property="og:title" content="Connect Apple Health to ChatGPT via Webhook — Your Data, Their Agent">
+  <meta property="og:description" content="Send Apple Health data to ChatGPT via webhook. Build custom GPTs that answer from your real HRV, sleep, and activity data.">
+  <meta property="og:image" content="https://www.healthexport.dev/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:site_name" content="Health Export AI">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Connect Apple Health to ChatGPT via Webhook — Your Data, Their Agent">
+  <meta name="twitter:description" content="Send Apple Health data to ChatGPT via webhook. Build custom GPTs that answer from your real HRV, sleep, and activity data.">
+  <meta name="twitter:image" content="https://www.healthexport.dev/og.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Connect Apple Health to ChatGPT via Webhook — Your Data, Their Agent",
+    "description": "Step-by-step guide to sending Apple Health data to ChatGPT via webhook using Health Export AI. Build custom GPTs that answer questions from your real HRV, sleep, and activity data.",
+    "author": { "@type": "Person", "name": "Philip D'Souza" },
+    "publisher": { "@type": "Organization", "name": "Health Export AI", "url": "https://www.healthexport.dev" },
+    "datePublished": "2026-07-26",
+    "dateModified": "2026-07-26"
+  }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B1020; color: #E0E4F5; line-height: 1.7; font-size: 17px; -webkit-font-smoothing: antialiased; }
+    .container { max-width: 760px; margin: 0 auto; padding: 40px 24px 80px; }
+    header { margin-bottom: 48px; }
+    .back { display: inline-block; color: #7C5CFF; text-decoration: none; font-size: 14px; font-weight: 600; margin-bottom: 24px; letter-spacing: 0.3px; }
+    .back:hover { text-decoration: underline; }
+    h1 { font-size: 36px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2; margin-bottom: 12px; color: #FFFFFF; }
+    .meta { color: #6B7099; font-size: 14px; margin-bottom: 8px; }
+    .tag { display: inline-block; background: #1A2148; color: #7C5CFF; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; letter-spacing: 0.3px; margin-right: 6px; }
+    h2 { font-size: 24px; font-weight: 700; margin: 40px 0 16px; color: #FFFFFF; letter-spacing: -0.3px; }
+    h3 { font-size: 19px; font-weight: 600; margin: 28px 0 12px; color: #EDEFFA; }
+    p { margin-bottom: 16px; color: #C9CEF0; }
+    a { color: #7C5CFF; text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: #9B82FF; }
+    ul, ol { margin: 0 0 16px 24px; color: #C9CEF0; }
+    li { margin-bottom: 6px; }
+    code { font-family: 'JetBrains Mono', 'SF Mono', Monaco, monospace; font-size: 14px; background: #161D3F; padding: 2px 6px; border-radius: 4px; color: #A0DDFF; }
+    pre { background: #0D1528; border: 1px solid #1E2748; border-radius: 10px; padding: 20px; margin: 0 0 20px; overflow-x: auto; }
+    pre code { background: none; padding: 0; font-size: 13px; line-height: 1.6; color: #D4D8F0; }
+    hr { border: none; border-top: 1px solid #1E2748; margin: 40px 0; }
+    blockquote { border-left: 3px solid #7C5CFF; margin: 0 0 20px; padding: 12px 20px; background: #0D1528; border-radius: 0 8px 8px 0; }
+    blockquote p { margin: 0; color: #A9B0E0; font-size: 15px; }
+    .cta-box { background: linear-gradient(135deg, #11173a 0%, #0B1020 100%); border: 1px solid #2A3160; border-radius: 14px; padding: 32px; margin: 40px 0; text-align: center; }
+    .cta-box h3 { margin-top: 0; }
+    .cta-button { display: inline-block; background: #7C5CFF; color: #FFFFFF; font-weight: 700; font-size: 16px; padding: 14px 32px; border-radius: 10px; text-decoration: none; margin-top: 12px; transition: background 0.15s; }
+    .cta-button:hover { background: #6B4BF0; color: #FFFFFF; }
+    .cta-sub { font-size: 13px; color: #6B7099; margin-top: 10px; }
+    .table-wrap { overflow-x: auto; margin: 0 0 20px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { background: #1A2148; color: #EDEFFA; font-weight: 600; text-align: left; padding: 10px 14px; border-bottom: 1px solid #2A3160; }
+    td { padding: 10px 14px; border-bottom: 1px solid #1E2748; color: #C9CEF0; }
+    .pro { color: #4ADE80; }
+    .con { color: #F87171; }
+    .neutral { color: #FBBF24; }
+    @media (max-width: 600px) { h1 { font-size: 28px; } .container { padding: 24px 16px 60px; } pre { padding: 14px; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a href="/blog" class="back">← Blog</a>
+      <div class="meta"><span class="tag">Webhook</span><span class="tag">ChatGPT</span><span class="tag">Apple Health</span> July 26, 2026</div>
+      <h1>Connect Apple Health to ChatGPT via Webhook — Your Data, Their Agent</h1>
+    </header>
+
+    <p>ChatGPT's new features — Actions, Custom GPTs, and the conversational agent interface — mean you can ask questions about your health data in plain English and get answers drawn from your real Apple Health records. The missing piece has always been <strong>getting the data into ChatGPT in the first place.</strong></p>
+
+    <p>This guide walks through the practical setup: Health Export AI's webhook integration sends your Apple Health metrics to any URL you specify, and you configure ChatGPT to receive and query that data. No export.xml, no DuckDB, no manually maintained CSV files. Everything syncs automatically from your iPhone.</p>
+
+    <h2>What you'll build</h2>
+
+    <p>By the end of this guide you'll have a Custom GPT that can answer questions like:</p>
+
+    <ul>
+      <li>"What was my average HRV over the last week?"</li>
+      <li>"How has my resting heart rate changed compared to last month?"</li>
+      <li>"Show me my sleep trends for the past 7 days — time in bed vs. time asleep."</li>
+      <li>"What's my step count trend this quarter?"</li>
+    </ul>
+
+    <p>The answers come from your actual Health Kit data, synced automatically every 30 minutes from your iPhone.</p>
+
+    <h2>The architecture</h2>
+
+    <p>The setup has three parts:</p>
+
+    <ol>
+      <li><strong>Health Export AI (iOS app)</strong> — reads 190 metric types from HealthKit and sends a structured JSON payload to a webhook URL of your choice, on a configurable schedule.</li>
+      <li><strong>A webhook receiver</strong> — a serverless endpoint (or your own server) that receives the payload and stores or indexes it. In this guide we'll use a simple serverless function deployed on Cloudflare Workers or Vercel.</li>
+      <li><strong>A ChatGPT Custom GPT</strong> — configured with an Action that points at your webhook receiver's query endpoint.</li>
+    </ol>
+
+    <p>The Health Export AI app handles the iOS-side encryption, scheduling, and data shaping. The companion <a href="https://github.com/PhilipAD/health-export-mcp">health-export-mcp</a> server provides the same data over stdio for desktop MCP clients — the webhook path is the cloud-native equivalent for ChatGPT.</p>
+
+    <h2>Step 1: Enable webhook sync in Health Export AI</h2>
+
+    <p>Open the Health Export AI app on your iPhone. Tap the gear icon to open Settings, then tap <strong>Webhook</strong>.</p>
+
+    <p>You'll see a configuration screen with three inputs:</p>
+
+    <pre><code>Webhook URL:   https://your-endpoint.example.com/health-ingest
+Secret Token:  whsec_your_secret_token_here
+Sync Interval: 30 minutes</code></pre>
+
+    <p>The webhook URL is where the app sends the data payload every cycle. The secret token is sent as an <code>Authorization: Bearer</code> header so your receiver can verify the payload came from your phone. The sync interval controls how often the app pushes data — 30 minutes is the default, and the minimum interval avoids excessive battery use on the HealthKit background fetch.</p>
+
+    <p>Once configured, the app immediately sends a full payload snapshot, then continues on the schedule. You can verify it's working by checking the <strong>Sync Log</strong> in the same settings screen — each entry shows the sync time, the number of metrics included, and the response status code from your webhook receiver.</p>
+
+    <h2>Step 2: Receive the webhook payload</h2>
+
+    <p>You need an endpoint that accepts <code>POST</code> requests. Here's a minimal Cloudflare Worker that receives the payload and stores it, then exposes a query endpoint for ChatGPT:</p>
+
+    <pre><code>export default {
+  async fetch(request, env) {
+    const url = new URL(request.url);
+
+    // Verify webhook signature
+    const token = request.headers.get("Authorization")?.replace("Bearer ", "");
+    if (token !== env.SECRET_TOKEN) {
+      return new Response("Unauthorized", { status: 401 });
+    }
+
+    if (request.method === "POST" &amp;&amp; url.pathname === "/ingest") {
+      // Receive and store the health data payload
+      const payload = await request.json();
+      await env.HEALTH_KV.put("latest", JSON.stringify(payload));
+      return new Response("OK", { status: 200 });
+    }
+
+    if (request.method === "GET" &amp;&amp; url.pathname === "/query") {
+      // Return the latest snapshot for ChatGPT to read
+      const data = await env.HEALTH_KV.get("latest");
+      return new Response(data, {
+        headers: { "Content-Type": "application/json" }
+      });
+    }
+
+    return new Response("Not Found", { status: 404 });
+  }
+}</code></pre>
+
+    <p>Deploy this as a Cloudflare Worker, set <code>SECRET_TOKEN</code> as an environment variable, and point the app at <code>https://your-worker.workers.dev/ingest</code>.</p>
+
+    <p>You can also use Vercel Serverless Functions, AWS Lambda, or any HTTP endpoint — the app sends a well-formed JSON payload and expects a 200 response. The data format is the same <code>.health-cache.json</code> format used by the MCP server:</p>
+
+    <pre><code>{
+  "version": 1,
+  "exportedAt": "2026-07-26T12:00:00Z",
+  "metrics": {
+    "HeartRateVariabilitySDNN": {
+      "unit": "ms",
+      "data": [
+        { "date": "2026-07-25", "value": 48.2 },
+        { "date": "2026-07-24", "value": 52.1 }
+      ]
+    },
+    "RestingHeartRate": {
+      "unit": "count/min",
+      "data": [
+        { "date": "2026-07-25", "value": 58 }
+      ]
+    },
+    "StepCount": { "unit": "count", "data": [ ... ] },
+    "AppleSleepingWristTemperature": { "unit": "degC", "data": [ ... ] }
+  }
+}</code></pre>
+
+    <p>Each metric includes its unit and daily aggregate values — same structure whether you're consuming it via MCP on desktop or via webhook for ChatGPT.</p>
+
+    <h2>Step 3: Create the Custom GPT with an Action</h2>
+
+    <p>Open ChatGPT and navigate to <strong>Explore GPTs → Create</strong>. Give your GPT a name like "Health Stats" and a description. In the <strong>Instructions</strong> field, add guidance so the GPT uses the webhook data naturally:</p>
+
+    <pre><code>You are a personal health analytics assistant. You have access to the user's
+Apple Health data via an API endpoint (GET /query).
+
+When the user asks about their health metrics:
+1. Call /query to get the full dataset.
+2. Find the relevant metric key by matching the user's question to the metric
+   names in the payload.
+3. Return the data with context — trends, comparisons to the prior period,
+   and deviations from the user's personal baseline.
+
+Available metrics vary per user but include HRV, resting heart rate, steps,
+sleep, active energy, and more. Always check all metric keys before saying
+a metric isn't available.</code></pre>
+
+    <p>Now configure the Action. Click <strong>+ New Action</strong> and paste this OpenAPI schema:</p>
+
+    <pre><code>openapi: 3.1.0
+info:
+  title: Health Export API
+  version: "1.0"
+servers:
+  - url: https://your-worker.workers.dev
+paths:
+  /query:
+    get:
+      operationId: getHealthData
+      summary: Get all Apple Health data
+      description: Returns the latest snapshot of all health metrics
+      responses:
+        "200":
+          description: Health data payload
+          content:
+            application/json:
+              schema:
+                type: object</code></pre>
+
+    <p>ChatGPT's Actions runtime will automatically call this endpoint when the GPT's instructions tell it to. No authentication is needed for the query endpoint if your worker only exposes <code>/query</code> without a signature check — or you can add an API key in the Action's authentication section for extra protection.</p>
+
+    <h2>Step 4: Ask your health questions</h2>
+
+    <p>Once the GPT is configured, the flow looks like this:</p>
+
+    <blockquote>
+      <p><strong>You:</strong> "What's my HRV been doing this week?"</p>
+      <p><strong>GPT:</strong> <em>(calls /query, inspects HeartRateVariabilitySDNN)</em> "Your HRV this week averaged 48 ms, which is within your personal baseline range. Your highest reading was 56 ms on Monday, and your lowest was 42 ms on Thursday — a typical variation for active recovery days."</p>
+    </blockquote>
+
+    <p>Because ChatGPT processes the entire payload, it can answer cross-metric questions too: "How does my resting heart rate correlate with my sleep time this month?" or "Show me days where my step count was below 5,000 and my HRV was below 40 ms."</p>
+
+    <h2>Privacy considerations</h2>
+
+    <p>This architecture means your health data <strong>leaves your iPhone</strong> — it's sent to your webhook receiver over HTTPS, and then fetched by ChatGPT's Action runtime. Here's what that means in practice:</p>
+
+    <ul>
+      <li><strong>You control the receiver.</strong> Deploy it on your own Cloudflare account, your own AWS account, or your own server. No third-party cloud processes your data.</li>
+      <li><strong>Data is encrypted in transit.</strong> HTTPS from the app to the receiver, and HTTPS from ChatGPT to the receiver.</li>
+      <li><strong>OpenAI sees only what the Action returns.</strong> If you deploy the worker above, ChatGPT fetches the whole payload on every query. You can minimize exposure by routing through a middleware that returns only the metrics the user asked about.</li>
+      <li><strong>No manual export.</strong> Unlike XML-based approaches, there's never an <code>export.xml</code> sitting in your Downloads folder or uploaded anywhere.</li>
+    </ul>
+
+    <p>The companion <a href="https://github.com/PhilipAD/health-export-mcp">health-export-mcp</a> server offers a fully local alternative for users who want to keep data entirely on-device. The webhook path is strictly for scenarios where you want ChatGPT to have agentic access to your numbers — and you control the endpoint that mediates that access.</p>
+
+    <h2>Comparison with alternatives</h2>
+
+    <div class="table-wrap">
+      <table>
+        <tr>
+          <th>Approach</th>
+          <th>Data Freshness</th>
+          <th>Setup Effort</th>
+          <th>Privacy Level</th>
+          <th>ChatGPT Ready</th>
+        </tr>
+        <tr>
+          <td><strong>Health Export AI webhook</strong></td>
+          <td>Every 30 min (auto)</td>
+          <td>Low — configure URL in app</td>
+          <td>End-to-end encrypted, you control receiver</td>
+          <td><span class="pro">✓</span> Custom GPT Action ready</td>
+        </tr>
+        <tr>
+          <td>Manual export.xml + upload</td>
+          <td>Manual — export each time</td>
+          <td>High — export, transfer, format</td>
+          <td>Data leaves Apple ecosystem</td>
+          <td><span class="neutral">~</span> Must be in ChatGPT knowledge</td>
+        </tr>
+        <tr>
+          <td>MCP + bridge server</td>
+          <td>Every 30 min (auto)</td>
+          <td>Medium — MCP client setup required</td>
+          <td>Local — never leaves your machine</td>
+          <td><span class="con">✗</span> ChatGPT doesn't support MCP</td>
+        </tr>
+        <tr>
+          <td>Health Auto Export (CSV)</td>
+          <td>Manual</td>
+          <td>Medium — third-party app, CSV conversion</td>
+          <td>Depends on provider</td>
+          <td><span class="neutral">~</span> Via file upload</td>
+        </tr>
+      </table>
+    </div>
+
+    <p>The webhook approach is the only one that gives ChatGPT agentic, up-to-date access to your health data without manual file management. It's the bridge between Apple's on-device HealthKit store and OpenAI's conversational agent architecture.</p>
+
+    <h2>Troubleshooting</h2>
+
+    <p><strong>Webhook sync shows "401" in the sync log.</strong> Your secret token doesn't match what the receiver expects. Verify the <code>Authorization</code> header comparison in your receiver code.</p>
+
+    <p><strong>ChatGPT says "I don't have access to your health data."</strong> The Action schema may not be connected. Check that the GPT's Action section has the correct OpenAPI spec and your worker's URL is correct. Also confirm the worker's <code>/query</code> endpoint returns a 200 with JSON.</p>
+
+    <p><strong>Not all metrics appear in the payload.</strong> Health Export AI only sends metrics that have data in the sync window. If you just started wearing your Apple Watch, it may take a day for metrics like HRV and resting heart rate to populate. The MCP server's <code>list_metrics</code> tool can show you exactly which metrics are populated.</p>
+
+    <p><strong>The payload is too large for ChatGPT's Action context.</strong> The full health cache for a typical user is 15-30 KB — well within ChatGPT's per-request limits. If you have years of history, consider returning only the last 90 days from your receiver to keep responses snappy.</p>
+
+    <div class="cta-box">
+      <h3>Set up your Apple Health webhook in under 2 minutes</h3>
+      <p style="color: #A9B0E0; font-size: 15px;">Download Health Export AI, configure your webhook URL, and build a Custom GPT that answers from your real health data — no export.xml, no CSV files, no manual steps.</p>
+      <a href="https://apps.apple.com/app/id6784185201" class="cta-button">Download Health Export AI on the App Store →</a>
+      <div class="cta-sub">Open-source MCP server: <a href="https://github.com/PhilipAD/health-export-mcp">github.com/PhilipAD/health-export-mcp</a></div>
+    </div>
+
+    <hr>
+
+    <p style="font-size: 14px; color: #5A6090;"><strong>Related:</strong> <a href="/blog/connect-apple-health-to-claude-mcp">Connect Apple Health to Claude Desktop</a> · <a href="/blog/connect-apple-health-to-cursor">Connect Apple Health to Cursor AI</a> · <a href="/blog/best-mcp-servers-health-data-buyer-guide-2026">Best MCP Servers for Health Data (2026)</a> · <a href="https://github.com/PhilipAD/health-export-mcp">health-export-mcp on GitHub</a></p>
+  </div>
+</body>
+</html>
