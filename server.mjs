@@ -23,7 +23,7 @@ if (process.env.HEALTH_LISTEN === '1') {
 }
 
 // ---- tool definitions ----------------------------------------------------
-const DATE = { type: 'string', description: 'YYYY-MM-DD' };
+const DATE = { type: 'string', description: 'A calendar date in YYYY-MM-DD format (e.g. 2026-03-14).' };
 const TOOLS = [
   {
     name: 'get_mcp_status',
@@ -45,9 +45,10 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        metric: { type: 'string', description: 'Metric name, e.g. step_count, heart_rate, sleep_analysis. Omit for all.' },
-        start: DATE, end: DATE,
-        aggregation: { type: 'string', enum: ['avg', 'sum', 'min', 'max', 'latest'] },
+        metric: { type: 'string', description: 'Metric name, e.g. step_count, heart_rate, sleep_analysis. Omit to return every available metric.' },
+        start: { type: 'string', description: 'Start of the date range (inclusive), YYYY-MM-DD. Omit for the earliest available data.' },
+        end: { type: 'string', description: 'End of the date range (inclusive), YYYY-MM-DD. Omit for the most recent available data.' },
+        aggregation: { type: 'string', enum: ['avg', 'sum', 'min', 'max', 'latest'], description: 'How to reduce each day\'s samples to one value: avg, sum, min, max, or latest. Defaults to avg.' },
       },
     },
     handler: (a) => store.getHealthMetrics(a),
@@ -57,7 +58,10 @@ const TOOLS = [
     description: 'Compare the most recent N-day window against the prior N days for a metric — returns change, percent change and direction (up/down/flat).',
     inputSchema: {
       type: 'object',
-      properties: { metric: { type: 'string' }, window: { type: 'integer', description: 'days per window (default 7)' } },
+      properties: {
+        metric: { type: 'string', description: 'Metric name to analyze the trend for, e.g. heart_rate, step_count, hrv.' },
+        window: { type: 'integer', description: 'Number of days in each comparison window (default 7): the most recent N days are compared against the prior N days.' },
+      },
       required: ['metric'],
     },
     handler: (a) => store.getTrends(a),
@@ -68,9 +72,9 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        metric: { type: 'string' },
-        periodA: { type: 'object', properties: { start: DATE, end: DATE } },
-        periodB: { type: 'object', properties: { start: DATE, end: DATE } },
+        metric: { type: 'string', description: 'Metric name to compare across the two periods, e.g. resting_heart_rate, step_count.' },
+        periodA: { type: 'object', description: 'The first date range to compare (the baseline period).', properties: { start: DATE, end: DATE } },
+        periodB: { type: 'object', description: 'The second date range, compared against period A.', properties: { start: DATE, end: DATE } },
       },
       required: ['metric', 'periodA', 'periodB'],
     },
@@ -81,14 +85,18 @@ const TOOLS = [
     description: 'Return clean structured JSON for the chosen metrics/date range — ideal to drop straight into an agent\'s context window.',
     inputSchema: {
       type: 'object',
-      properties: { metrics: { type: 'array', items: { type: 'string' } }, start: DATE, end: DATE },
+      properties: {
+        metrics: { type: 'array', items: { type: 'string' }, description: 'Metric names to include, e.g. ["step_count","heart_rate"]. Omit to include every available metric.' },
+        start: DATE,
+        end: DATE,
+      },
     },
     handler: (a) => store.getStructuredExport(a),
   },
   {
     name: 'query_health_data',
     description: 'Natural-language convenience: pass a question (e.g. "average HRV last month") and get routed structured results. Prefer the specific tools above when you can.',
-    inputSchema: { type: 'object', properties: { question: { type: 'string' } }, required: ['question'] },
+    inputSchema: { type: 'object', properties: { question: { type: 'string', description: 'A natural-language question about the health data, e.g. "average HRV last month" or "how did my steps trend this week".' } }, required: ['question'] },
     handler: (a) => store.queryHealthData(a),
   },
 ];
