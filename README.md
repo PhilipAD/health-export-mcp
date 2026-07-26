@@ -7,6 +7,7 @@
 <p align="center"><a href="https://apps.apple.com/app/id6784185201"><img alt="Download Health Export AI on the App Store" src="https://img.shields.io/badge/Download_on_the-App_Store-0D96F6?style=for-the-badge&logo=apple&logoColor=white" height="38" /></a></p>
 
 <p align="center">
+  <a href="https://glama.ai/mcp/servers/PhilipAD/health-export-mcp"><img alt="Glama MCP Server" src="https://glama.ai/mcp/servers/PhilipAD/health-export-mcp/badges/score.svg" /></a>
   <img alt="MCP" src="https://img.shields.io/badge/Model_Context_Protocol-server-6E56CF" />
   <img alt="zero dependencies" src="https://img.shields.io/badge/dependencies-0-2ea44f" />
   <img alt="Node ≥18" src="https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white" />
