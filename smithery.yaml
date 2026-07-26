@@ -1,0 +1,29 @@
+# Smithery deployment configuration for health-export-mcp
+# https://smithery.ai/docs/deploy
+build:
+  dockerfile: Dockerfile
+  dockerBuildPath: .
+startCommand:
+  type: stdio
+  configSchema:
+    type: object
+    properties:
+      healthDataDir:
+        type: string
+        description: "Path to Apple Health export directory containing export.xml (local path on user machine)"
+        default: ""
+      healthListen:
+        type: string
+        description: "Set to '1' to enable LAN push from iOS Health Export app"
+        default: ""
+    required: []
+  commandFunction:
+    |-
+      (config) => ({
+        command: 'node',
+        args: ['server.mjs'],
+        env: {
+          HEALTH_DATA_DIR: config.healthDataDir || '',
+          HEALTH_LISTEN: config.healthListen || ''
+        }
+      })
