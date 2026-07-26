@@ -1,0 +1,46 @@
+{
+  "$schema": "https://glama.ai/mcp/schemas/server.json",
+  "maintainers": [
+    "PhilipAD"
+  ],
+  "name": "health-export-mcp",
+  "description": "Query 190 Apple Health/HealthKit metrics from any MCP AI agent — zero-dependency, local-first, read-only. The open-source server for the Health Export AI app.",
+  "longDescription": "An open-source, zero-dependency MCP server that turns your Apple Health export into 7 query tools any AI agent can call in natural language. Tracks HRV, sleep, resting heart rate, steps, workouts, VO₂ max, and 180+ more metrics — all local-first with no developer server in the path.",
+  "categories": [
+    "healthcare",
+    "lifestyle",
+    "data-analysis"
+  ],
+  "tags": [
+    "apple-health",
+    "healthkit",
+    "health-data",
+    "quantified-self",
+    "hrv",
+    "sleep-tracking",
+    "fitness"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/PhilipAD/health-export-mcp.git"
+  },
+  "homepage": "https://www.healthexport.dev",
+  "license": "MIT",
+  "installCommand": "git clone https://github.com/PhilipAD/health-export-mcp.git && cd health-export-mcp && node apply-mcp-config.mjs",
+  "runtime": {
+    "type": "stdio",
+    "command": "node",
+    "args": ["server.mjs"]
+  },
+  "requirements": {
+    "node": ">=18"
+  },
+  "packages": [
+    {
+      "registry": "npm",
+      "name": "health-export-mcp",
+      "command": "npx",
+      "args": ["health-export-mcp"]
+    }
+  ]
+}
