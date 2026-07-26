@@ -5,3 +5,17 @@ node_modules/
 .health-workouts-cache.json
 .health-pair.json
 deeplinks.txt
+
+# --- Growth org: internal artifacts must NEVER be committed to this PUBLIC repo ---
+# (they belong in the private health-export-ai repo or as Paperclip work products)
+docs/topics.txt
+docs/topics-*.txt
+docs/SEO-STRATEGY-*.md
+docs/placement-records*.md
+docs/registry-state.md
+docs/what-works.md
+references/what-works.md
+references/tools/
+scripts/exa_search.py
+scripts/grok_query.py
+**/*.experiment.md
