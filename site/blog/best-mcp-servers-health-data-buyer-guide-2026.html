@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Best MCP Servers for Health Data — A Buyer's Guide (2026) | Health Export AI</title>
+  <meta name="description" content="Comprehensive comparison of every MCP server for Apple Health, Garmin, Oura, and Whoop data in 2026. Includes health-export-mcp, apple-health-mcp-unofficial, DuckDB-based servers, and ghurt.org.">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'self'; img-src 'self' https://img.shields.io; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; script-src 'self' https://cdn.jsdelivr.net 'unsafe-inline'; form-action 'none'; base-uri 'none'">
+  <link rel="canonical" href="https://www.healthexport.dev/blog/best-mcp-servers-health-data-buyer-guide-2026">
+  <meta property="og:type" content="article">
+  <meta property="og:url" content="https://www.healthexport.dev/blog/best-mcp-servers-health-data-buyer-guide-2026">
+  <meta property="og:title" content="Best MCP Servers for Health Data — A Buyer's Guide (2026)">
+  <meta property="og:description" content="Side-by-side comparison of every MCP server for personal health data: health-export-mcp, apple-health-mcp-unofficial, DuckDB-based servers, and ghurt.org.">
+  <meta property="og:image" content="https://www.healthexport.dev/og.png">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:site_name" content="Health Export AI">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="Best MCP Servers for Health Data — A Buyer's Guide (2026)">
+  <meta name="twitter:description" content="Side-by-side comparison of every MCP server for personal health data: health-export-mcp, apple-health-mcp-unofficial, DuckDB-based servers, and ghurt.org.">
+  <meta name="twitter:image" content="https://www.healthexport.dev/og.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org",
+    "@type": "TechArticle",
+    "headline": "Best MCP Servers for Health Data — A Buyer's Guide (2026)",
+    "description": "Side-by-side comparison of every MCP server for personal health data including health-export-mcp, apple-health-mcp-unofficial, DuckDB-based servers, and ghurt.org.",
+    "author": { "@type": "Person", "name": "Philip D'Souza" },
+    "publisher": { "@type": "Organization", "name": "Health Export AI", "url": "https://www.healthexport.dev" },
+    "datePublished": "2026-07-26",
+    "dateModified": "2026-07-26"
+  }
+  </script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; background: #0B1020; color: #E0E4F5; line-height: 1.7; font-size: 17px; -webkit-font-smoothing: antialiased; }
+    .container { max-width: 760px; margin: 0 auto; padding: 40px 24px 80px; }
+    header { margin-bottom: 48px; }
+    .back { display: inline-block; color: #7C5CFF; text-decoration: none; font-size: 14px; font-weight: 600; margin-bottom: 24px; letter-spacing: 0.3px; }
+    .back:hover { text-decoration: underline; }
+    h1 { font-size: 36px; font-weight: 800; letter-spacing: -0.5px; line-height: 1.2; margin-bottom: 12px; color: #FFFFFF; }
+    .meta { color: #6B7099; font-size: 14px; margin-bottom: 8px; }
+    .tag { display: inline-block; background: #1A2148; color: #7C5CFF; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 12px; letter-spacing: 0.3px; margin-right: 6px; }
+    h2 { font-size: 24px; font-weight: 700; margin: 40px 0 16px; color: #FFFFFF; letter-spacing: -0.3px; }
+    h3 { font-size: 19px; font-weight: 600; margin: 28px 0 12px; color: #EDEFFA; }
+    p { margin-bottom: 16px; color: #C9CEF0; }
+    a { color: #7C5CFF; text-decoration: underline; text-underline-offset: 2px; }
+    a:hover { color: #9B82FF; }
+    ul, ol { margin: 0 0 16px 24px; color: #C9CEF0; }
+    li { margin-bottom: 6px; }
+    code { font-family: 'JetBrains Mono', 'SF Mono', Monaco, monospace; font-size: 14px; background: #161D3F; padding: 2px 6px; border-radius: 4px; color: #A0DDFF; }
+    pre { background: #0D1528; border: 1px solid #1E2748; border-radius: 10px; padding: 20px; margin: 0 0 20px; overflow-x: auto; }
+    pre code { background: none; padding: 0; font-size: 13px; line-height: 1.6; color: #D4D8F0; }
+    hr { border: none; border-top: 1px solid #1E2748; margin: 40px 0; }
+    blockquote { border-left: 3px solid #7C5CFF; margin: 0 0 20px; padding: 12px 20px; background: #0D1528; border-radius: 0 8px 8px 0; }
+    blockquote p { margin: 0; color: #A9B0E0; font-size: 15px; }
+    .cta-box { background: linear-gradient(135deg, #11173a 0%, #0B1020 100%); border: 1px solid #2A3160; border-radius: 14px; padding: 32px; margin: 40px 0; text-align: center; }
+    .cta-box h3 { margin-top: 0; }
+    .cta-button { display: inline-block; background: #7C5CFF; color: #FFFFFF; font-weight: 700; font-size: 16px; padding: 14px 32px; border-radius: 10px; text-decoration: none; margin-top: 12px; transition: background 0.15s; }
+    .cta-button:hover { background: #6B4BF0; color: #FFFFFF; }
+    .cta-sub { font-size: 13px; color: #6B7099; margin-top: 10px; }
+    .table-wrap { overflow-x: auto; margin: 0 0 20px; }
+    table { width: 100%; border-collapse: collapse; font-size: 14px; }
+    th { background: #1A2148; color: #EDEFFA; font-weight: 600; text-align: left; padding: 10px 14px; border-bottom: 1px solid #2A3160; }
+    td { padding: 10px 14px; border-bottom: 1px solid #1E2748; color: #C9CEF0; }
+    .pro { color: #4ADE80; }
+    .con { color: #F87171; }
+    .neutral { color: #FBBF24; }
+    @media (max-width: 600px) { h1 { font-size: 28px; } .container { padding: 24px 16px 60px; } pre { padding: 14px; } }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <header>
+      <a href="/blog" class="back">← Blog</a>
+      <div class="meta"><span class="tag">MCP</span><span class="tag">Comparison</span><span class="tag">Health Data</span> July 26, 2026</div>
+      <h1>Best MCP Servers for Health Data — A Buyer's Guide (2026)</h1>
+    </header>
+
+    <p>The Model Context Protocol (MCP) has unlocked a new capability: <strong>your AI agent can read your real Apple Health data</strong> — HRV, sleep stages, steps, resting heart rate, VO₂ max — and answer questions from your actual numbers instead of a static CSV.</p>
+
+    <p>But which MCP server should you use? As of July 2026 there are five active projects, each with a different approach, different data sources, and different tradeoffs. This guide compares them all so you can pick the right one for your stack.</p>
+
+    <h2>TL;DR — the one-sentence summary</h2>
+
+    <p>If you use Apple Health, <strong>health-export-mcp</strong> is the only server that reads HealthKit directly without requiring you to manually export XML or learn SQL. If you use Garmin/Oura/Whoop, use ghurt.org. If you already have an export.xml and prefer DuckDB, @mseep/apple-health-mcp works but adds a query-language dependency.</p>
+
+    <h2>Competitive landscape — July 2026</h2>
+
+    <div class="table-wrap">
+      <table>
+        <tr>
+          <th>Server</th>
+          <th>Data Source</th>
+          <th>Zero Deps</th>
+          <th>Manual Export</th>
+          <th>SQL Needed</th>
+          <th>Status</th>
+        </tr>
+        <tr>
+          <td><strong>health-export-mcp</strong></td>
+          <td>HealthKit (direct, via iOS companion app)</td>
+          <td><span class="pro">✓</span></td>
+          <td><span class="pro">No</span></td>
+          <td><span class="pro">No</span></td>
+          <td>Active (v1.0.1)</td>
+        </tr>
+        <tr>
+          <td>@mseep/apple-health-mcp</td>
+          <td>export.xml → DuckDB</td>
+          <td><span class="con">✗</span></td>
+          <td><span class="con">Yes</span></td>
+          <td><span class="con">Yes</span></td>
+          <td>Active (v1.0.2)</td>
+        </tr>
+        <tr>
+          <td>@neiltron/apple-health-mcp</td>
+          <td>export.xml → DuckDB</td>
+          <td><span class="con">✗</span></td>
+          <td><span class="con">Yes</span></td>
+          <td><span class="con">Yes</span></td>
+          <td>Active (v1.0.2)</td>
+        </tr>
+        <tr>
+          <td>apple-health-mcp-unofficial</td>
+          <td>export.xml (local SAX parser)</td>
+          <td><span class="neutral">~</span></td>
+          <td><span class="con">Yes</span></td>
+          <td><span class="pro">No</span></td>
+          <td>Active (v0.5.0)</td>
+        </tr>
+        <tr>
+          <td>apple-health-mcp (original)</td>
+          <td>Health Auto Export CSVs</td>
+          <td><span class="neutral">~</span></td>
+          <td><span class="con">Yes</span></td>
+          <td><span class="pro">No</span></td>
+          <td>Abandoned (v0.1.0)</td>
+        </tr>
+        <tr>
+          <td>ghurt.org</td>
+          <td>Garmin / Oura / Whoop APIs</td>
+          <td><span class="neutral">~</span></td>
+          <td><span class="pro">No</span></td>
+          <td><span class="pro">No</span></td>
+          <td>Active (strongest brand)</td>
+        </tr>
+      </table>
+    </div>
+
+    <h2>1. health-export-mcp — the direct HealthKit bridge</h2>
+
+    <p><a href="https://github.com/PhilipAD/health-export-mcp">health-export-mcp</a> is the open-source MCP server paired with the <a href="https://www.healthexport.dev">Health Export AI</a> iOS app. The app reads your HealthKit store directly — 190 metric types — and writes a structured <code>.health-cache.json</code> file to iCloud Drive. The MCP server reads that cache and exposes seven query tools to any MCP client.</p>
+
+    <h3>What makes it different</h3>
+
+    <p><strong>No manual export step.</strong> Every other Apple Health MCP server requires you to go to Settings → Health → Export All Health Data, wait for the XML to generate, then point the server at that file. health-export-mcp's companion iOS app syncs automatically every 30 minutes — your agent always sees recent data.</p>
+
+    <p><strong>Zero dependencies.</strong> The server is a single <code>server.mjs</code> file. No npm install of DuckDB, no Python runtime, no SQL parser. Run <code>node server.mjs</code> and it's ready.</p>
+
+    <p><strong>Natural-language queries.</strong> The seven tools cover the most common agent patterns — query by metric and date range, get daily aggregates, list available metrics, compare date ranges, and more. Your agent can ask "What's my HRV trend this week?" without writing SQL.</p>
+
+    <p>Setup with Claude Desktop:</p>
+
+    <pre><code>{
+  "mcpServers": {
+    "health-export": {
+      "command": "node",
+      "args": ["/path/to/health-export-mcp/server.mjs"],
+      "env": {
+        "HEALTH_DATA_DIR": "~/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents"
+      }
+    }
+  }
+}</code></pre>
+
+    <p>Or drag the <code>health-export.mcpb</code> file into Claude Desktop → Settings → Extensions.</p>
+
+    <p>Same config works for Cursor (<code>~/.cursor/mcp.json</code>), VS Code, opencode, and Hermes.</p>
+
+    <div class="table-wrap">
+      <table>
+        <tr><th></th><th>Pro</th><th>Con</th></tr>
+        <tr><td><span class="pro">✓</span></td><td>No export.xml needed — data syncs automatically</td><td rowspan="4" style="color:#F87171;">Requires iOS companion app (free on App Store)</td></tr>
+        <tr><td><span class="pro">✓</span></td><td>Zero npm dependencies — single file server</td></tr>
+        <tr><td><span class="pro">✓</span></td><td>7 query tools — natural language, no SQL</td></tr>
+        <tr><td><span class="pro">✓</span></td><td>Cache is 50-100x smaller than export.xml (daily aggregates)</td></tr>
+      </table>
+    </div>
+
+    <h2>2. DuckDB-based servers (@mseep, @neiltron)</h2>
+
+    <p>The @mseep/apple-health-mcp and @neiltron/apple-health-mcp packages take the same approach: they ingest <code>export.xml</code> into a DuckDB database, then expose a single SQL-execution tool. Your agent sends SQL queries and gets results back.</p>
+
+    <p>This is a technically sound architecture — DuckDB is fast, columnar, and excellent for time-series analytics. If you're already comfortable writing SQL, these servers give you complete flexibility. You can do arbitrary aggregations, window functions, and joins that the health-export-mcp tools don't expose directly.</p>
+
+    <p>However, the SQL requirement is a meaningful friction point. Most MCP clients don't know your database schema — your agent has to first discover which tables exist and which columns are available, then generate syntactically correct DuckDB SQL. In practice, this takes 2-3 extra round-trips per query. The developer experience is "ask the agent to query your health data, watch it guess the table name wrong, correct it, then get results."</p>
+
+    <p>Setup is also heavier:</p>
+
+    <pre><code># @mseep requires npm install (pulls in DuckDB native bindings)
+npm install @mseep/apple-health-mcp
+# Then convert export.xml to DuckDB:
+npx apple-health-mcp ingest ~/Downloads/export.xml
+# Then configure MCP pointing at the .duckdb file</code></pre>
+
+    <div class="table-wrap">
+      <table>
+        <tr><th></th><th>Pro</th><th>Con</th></tr>
+        <tr><td><span class="pro">✓</span></td><td>Arbitrary SQL — complete flexibility</td><td rowspan="3" style="color:#F87171;">Requires DuckDB native binary (~20 MB)</td></tr>
+        <tr><td><span class="pro">✓</span></td><td>Fast columnar queries on large datasets</td><td rowspan="2" style="color:#F87171;">Agent must know schema to write correct SQL</td></tr>
+        <tr><td><span class="pro">✓</span></td><td>Can join across all health metrics in one query</td></tr>
+      </table>
+    </div>
+
+    <h2>3. apple-health-mcp-unofficial — local-first XML parser</h2>
+
+    <p>The <code>apple-health-mcp-unofficial</code> package (v0.5.0) takes a different approach: it parses <code>export.xml</code> locally using a SAX-style streaming parser and exposes a set of query tools — similar in philosophy to health-export-mcp but reading from the raw XML export instead of a pre-structured cache.</p>
+
+    <p>Strengths: no DuckDB dependency, no SQL knowledge needed, local-first privacy model. The tool interface is straightforward — ask for metrics by name and date range, get JSON back.</p>
+
+    <p>Weaknesses: still requires an export.xml generation step, which means you go to Settings → Health → Export All Health Data every time you want fresh data. The SAX parser has to re-parse the full XML on every server start (45-90 seconds for a 500 MB file). And because it parses the flat XML record structure, correlation data (like blood pressure with systolic/diastolic pairs) gets flattened.</p>
+
+    <h2>4. The original apple-health-mcp (abandoned)</h2>
+
+    <p>The original <code>apple-health-mcp</code> (v0.1.0) read CSVs from the now-defunct Health Auto Export app (<code>healthautoexport.com</code> domain is dead). The server has no commits since mid-2025. If you find an old reference to it, don't build on it — there's no support, no updates, and the data source it depends on no longer exists.</p>
+
+    <h2>5. ghurt.org — for Garmin, Oura, and Whoop (not Apple Health)</h2>
+
+    <p><a href="https://ghurt.org">ghurt.org</a> is the strongest MCP brand in the health-data space. It integrates with Garmin Connect, Oura Ring, and Whoop — but <strong>not Apple Health</strong>. If you wear an Apple Watch, ghurt can't read your data.</p>
+
+    <p>ghurt's approach is cloud-based: you authenticate with your wearable provider's API, and ghurt proxies that data to your MCP client. This gives it access to real-time data without manual exports, but it means your data passes through ghurt's server.</p>
+
+    <p>If you use Apple Health exclusively, ghurt is not an option. If you use a mix of Apple Watch and Oura/Garmin/Whoop, you'd need both health-export-mcp (for Apple Health) and ghurt (for the others).</p>
+
+    <h2>How to choose</h2>
+
+    <ul>
+      <li><strong>I have an Apple Watch and want to ask my agent about my health data without jumping through hoops.</strong> Use <a href="https://github.com/PhilipAD/health-export-mcp">health-export-mcp</a> with the free iOS companion app. No XML, no SQL, no DuckDB. Setup time: under 2 minutes.</li>
+      <li><strong>I prefer SQL and want to do custom analytics across my full export history.</strong> Use @mseep/apple-health-mcp. Be prepared to help your agent discover the schema on first use.</li>
+      <li><strong>I already have an export.xml and don't want to install anything new.</strong> Use apple-health-mcp-unofficial. It's lightweight and needs only Node.js.</li>
+      <li><strong>I use Garmin/Oura/Whoop, not Apple Watch.</strong> Use ghurt.org.</li>
+      <li><strong>I found the original apple-health-mcp package on npm.</strong> Don't use it — it's abandoned and its data source is defunct.</li>
+    </ul>
+
+    <h2>What the feature comparison looks like in practice</h2>
+
+    <p>Here's one concrete query run through each active Apple Health server. The question: <em>"What was my average HRV last week?"</em></p>
+
+    <div class="table-wrap">
+      <table>
+        <tr><th>Server</th><th>Query Pattern</th><th>Data Freshness</th><th>Result</th></tr>
+        <tr><td>health-export-mcp</td><td><code>get_metrics(metric="HeartRateVariabilitySDNN", start="2026-07-19", end="2026-07-25")</code></td><td>Last sync (auto, every 30 min)</td><td>JSON with daily averages, unit metadata</td></tr>
+        <tr><td>@mseep/apple-health-mcp</td><td><code>SELECT AVG(value) FROM records WHERE type LIKE '%HRV%' AND date BETWEEN '2026-07-19' AND '2026-07-25'</code></td><td>Last export.xml generation</td><td>Raw SQL result set</td></tr>
+        <tr><td>apple-health-mcp-unofficial</td><td><code>get_health_metrics(metric="heart_rate_variability", start="2026-07-19", end="2026-07-25")</code></td><td>Last export.xml generation</td><td>JSON with individual samples</td></tr>
+      </table>
+    </div>
+
+    <p>The practical difference shows up in data freshness. With health-export-mcp, the companion app syncs every 30 minutes, so last week's data is already cached and ready. With any XML-based server, you need to re-export from Settings → Health (which takes 5-15 minutes) and re-ingest (another 45-90 seconds of parsing) before your agent can see any new data points added to HealthKit by other apps.</p>
+
+    <h2>The elephant in the room: privacy</h2>
+
+    <p>All the servers compared here are <strong>local-first</strong> — they process your health data on your own machine. The MCP protocol runs over stdio (or localhost WebSocket for some clients). No server in this comparison uploads your raw health data to a cloud service by default.</p>
+
+    <p>The distinction is subtle but important: ghurt.org requires sending API tokens to their server (to proxy Garmin/Oura/Whoop). DuckDB-based servers download native DuckDB binaries from npm. health-export-mcp runs entirely on your machine with the companion app writing locally to iCloud Drive — no developer-owned server handles your data at any point.</p>
+
+    <div class="cta-box">
+      <h3>Try the zero-dependency Apple Health MCP server</h3>
+      <p style="color: #A9B0E0; font-size: 15px;">health-export-mcp reads 190 HealthKit metrics directly — no export.xml, no SQL, no DuckDB. Works with Claude, Cursor, VS Code, opencode, and Hermes.</p>
+      <a href="https://apps.apple.com/app/id6784185201" class="cta-button">Download Health Export AI on the App Store →</a>
+      <div class="cta-sub">Open-source MCP server: <a href="https://github.com/PhilipAD/health-export-mcp">github.com/PhilipAD/health-export-mcp</a></div>
+    </div>
+
+    <hr>
+
+    <p style="font-size: 14px; color: #5A6090;"><strong>Related:</strong> <a href="/blog/connect-apple-health-to-claude-mcp">Connect Apple Health to Claude Desktop</a> · <a href="/blog/connect-apple-health-to-cursor">Connect Apple Health to Cursor AI</a> · <a href="https://github.com/PhilipAD/health-export-mcp">health-export-mcp on GitHub</a></p>
+  </div>
+</body>
+</html>

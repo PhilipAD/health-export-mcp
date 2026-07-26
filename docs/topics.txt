@@ -1,0 +1,24 @@
+# SEO Research topic pipeline
+# Format: <surface> <query family> <title/slug> --- one per line
+# surface: app-store | mcp | both
+# When published: prepend DONE: to the line
+
+# -- Batch 2026-07-25 -- SEO Research heartbeat
+
+DONE: both mcp/agent Connect Apple Health to Cursor - Step-by-Step MCP Setup
+both mcp/agent Connect Apple Health to ChatGPT via Webhook - Your Data, Their Agent
+both export-mech Apple Health export.xml to JSON - The Complete Guide (2026)
+DONE: mcp mcp/agent Best MCP Servers for Health Data - A Buyer Guide (2026)
+both export-mech Automate Your Apple Health Export for AI Agents - No More Manual XML
+both mcp/agent Apple Health Data Privacy with AI Agents - What Stays Local, What Leaves
+mcp mcp/agent Run Apple Health Data with Your Local LLM (Ollama + MCP)
+both mcp/agent Health Auto Export vs Health Export AI - Which Apple Health MCP Server Wins
+mcp mcp/agent Connect Apple Health to opencode - Native MCP Setup Walkthrough
+both mcp/agent Apple Health HRV and Sleep Trends in Your AI Agent - Visualize, Compare, Decide
+
+# -- Experiment log
+# 2026-07-26 - Post 1: Best MCP Servers for Health Data - A Buyer Guide (2026)
+#   Angle: competitive comparison, positioning health-export-mcp as the only direct HealthKit bridge
+#   Key differentiator: no export.xml, no SQL, zero dependencies
+#   Slug: best-mcp-servers-health-data-buyer-guide-2026
+# -- Blocked / exhausted
