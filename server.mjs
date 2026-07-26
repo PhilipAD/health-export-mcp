@@ -11,7 +11,7 @@
 
 import * as store from './healthstore.mjs';
 
-const SERVER = { name: 'health-export-ai', version: '1.0.0' };
+const SERVER = { name: 'health-export-ai', version: '1.0.1' };
 const DEFAULT_PROTOCOL = '2025-06-18';
 const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
 
