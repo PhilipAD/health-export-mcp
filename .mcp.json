@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "health-export": {
+      "command": "npx",
+      "args": ["-y", "health-export-mcp"],
+      "env": {
+        "HEALTH_DATA_DIR": "~/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents"
+      }
+    }
+  }
+}
