@@ -11,9 +11,13 @@
 
 import * as store from './healthstore.mjs';
 
-const SERVER = { name: 'health-export-ai', version: '1.0.1' };
+const SERVER = { name: 'health-export-ai', version: '1.0.0' };
 const DEFAULT_PROTOCOL = '2025-06-18';
 const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
+
+// ~25,000 tokens at the usual ~4 chars/token, matching Claude Code's MAX_MCP_OUTPUT_TOKENS default.
+// Override with HEALTH_MAX_RESULT_CHARS when a host allows more.
+const BUDGET_CHARS = Number(process.env.HEALTH_MAX_RESULT_CHARS || 100000);
 
 // Optional LAN push: when HEALTH_LISTEN=1, also accept HTTP/WebSocket pushes from the iOS app
 // (the "WebSocket" path) in THIS same process — no separate daemon. Logs only to stderr so the
@@ -23,7 +27,15 @@ if (process.env.HEALTH_LISTEN === '1') {
 }
 
 // ---- tool definitions ----------------------------------------------------
-const DATE = { type: 'string', description: 'A calendar date in YYYY-MM-DD format (e.g. 2026-03-14).' };
+const DATE = { type: 'string', description: 'YYYY-MM-DD' };
+const GRANULARITY = {
+  type: 'string', enum: ['auto', 'day', 'week', 'month', 'quarter', 'year'],
+  description: "Roll daily values up before returning them. 'auto' (default) picks the finest granularity that fits the response budget, so a multi-year range returns monthly points instead of thousands of daily ones.",
+};
+const LIMIT = { type: 'integer', description: 'Maximum data points to return (default 365, max 3000). The server rolls up rather than truncating.' };
+// Data-heavy tools declare a larger persist-to-disk threshold so a legitimately big answer is
+// written to a file and referenced, instead of being cut off mid-JSON.
+const BIG_RESULT_META = { 'anthropic/maxResultSizeChars': 400000 };
 const TOOLS = [
   {
     name: 'get_mcp_status',
@@ -41,27 +53,25 @@ const TOOLS = [
   },
   {
     name: 'get_health_metrics',
-    description: 'Get daily values for a metric (or all metrics) over an optional date range, with an aggregate (avg/sum/min/max/latest). The core data-retrieval tool.',
+    description: "Get values for a metric (or all metrics) over an optional date range, with an aggregate (avg/sum/min/max/latest). The core data-retrieval tool. Every result carries a `coverage` block giving the metric's real firstDate/lastDate/days — check it before trusting a long window, and note that `aggregate` is always computed over the full range even when `points` are rolled up.",
     inputSchema: {
       type: 'object',
       properties: {
-        metric: { type: 'string', description: 'Metric name, e.g. step_count, heart_rate, sleep_analysis. Omit to return every available metric.' },
-        start: { type: 'string', description: 'Start of the date range (inclusive), YYYY-MM-DD. Omit for the earliest available data.' },
-        end: { type: 'string', description: 'End of the date range (inclusive), YYYY-MM-DD. Omit for the most recent available data.' },
-        aggregation: { type: 'string', enum: ['avg', 'sum', 'min', 'max', 'latest'], description: 'How to reduce each day\'s samples to one value: avg, sum, min, max, or latest. Defaults to avg.' },
+        metric: { type: 'string', description: 'Metric name, e.g. step_count, heart_rate, sleep_analysis. Omit for all.' },
+        start: DATE, end: DATE,
+        aggregation: { type: 'string', enum: ['avg', 'sum', 'min', 'max', 'latest'] },
+        granularity: GRANULARITY, limit: LIMIT,
       },
     },
+    _meta: BIG_RESULT_META,
     handler: (a) => store.getHealthMetrics(a),
   },
   {
     name: 'get_trends',
-    description: 'Compare the most recent N-day window against the prior N days for a metric — returns change, percent change and direction (up/down/flat).',
+    description: 'Compare the most recent N-day window against the prior N days for a metric — returns change, percent change and direction (up/down/flat). Also returns `daysAvailable` and `windowSatisfied`: if windowSatisfied is false the file does not hold enough history for the window you asked for, and the comparison is over less data than requested.',
     inputSchema: {
       type: 'object',
-      properties: {
-        metric: { type: 'string', description: 'Metric name to analyze the trend for, e.g. heart_rate, step_count, hrv.' },
-        window: { type: 'integer', description: 'Number of days in each comparison window (default 7): the most recent N days are compared against the prior N days.' },
-      },
+      properties: { metric: { type: 'string' }, window: { type: 'integer', description: 'days per window (default 7)' } },
       required: ['metric'],
     },
     handler: (a) => store.getTrends(a),
@@ -72,9 +82,9 @@ const TOOLS = [
     inputSchema: {
       type: 'object',
       properties: {
-        metric: { type: 'string', description: 'Metric name to compare across the two periods, e.g. resting_heart_rate, step_count.' },
-        periodA: { type: 'object', description: 'The first date range to compare (the baseline period).', properties: { start: DATE, end: DATE } },
-        periodB: { type: 'object', description: 'The second date range, compared against period A.', properties: { start: DATE, end: DATE } },
+        metric: { type: 'string' },
+        periodA: { type: 'object', properties: { start: DATE, end: DATE } },
+        periodB: { type: 'object', properties: { start: DATE, end: DATE } },
       },
       required: ['metric', 'periodA', 'periodB'],
     },
@@ -82,21 +92,22 @@ const TOOLS = [
   },
   {
     name: 'get_structured_export',
-    description: 'Return clean structured JSON for the chosen metrics/date range — ideal to drop straight into an agent\'s context window.',
+    description: "Return clean structured JSON for the chosen metrics/date range. Paginated: the result carries `nextCursor` when more metrics remain — pass it back as `cursor` for the next page. Prefer naming the metrics you need and a date range; calling it bare over a full history is a lot of data.",
     inputSchema: {
       type: 'object',
       properties: {
-        metrics: { type: 'array', items: { type: 'string' }, description: 'Metric names to include, e.g. ["step_count","heart_rate"]. Omit to include every available metric.' },
-        start: DATE,
-        end: DATE,
+        metrics: { type: 'array', items: { type: 'string' } }, start: DATE, end: DATE,
+        granularity: GRANULARITY, limit: LIMIT,
+        cursor: { type: 'string', description: 'Opaque cursor from a previous call\'s nextCursor.' },
       },
     },
+    _meta: BIG_RESULT_META,
     handler: (a) => store.getStructuredExport(a),
   },
   {
     name: 'query_health_data',
-    description: 'Natural-language convenience: pass a question (e.g. "average HRV last month") and get routed structured results. Prefer the specific tools above when you can.',
-    inputSchema: { type: 'object', properties: { question: { type: 'string', description: 'A natural-language question about the health data, e.g. "average HRV last month" or "how did my steps trend this week".' } }, required: ['question'] },
+    description: 'Natural-language convenience: pass a question and get routed structured results. Prefer the specific tools above when you can — and call list_metrics first to see how much history exists, since this tool answers over whatever the file holds.',
+    inputSchema: { type: 'object', properties: { question: { type: 'string' } }, required: ['question'] },
     handler: (a) => store.queryHealthData(a),
   },
 ];
@@ -128,15 +139,44 @@ async function handle(msg) {
       return result(id, {});
 
     case 'tools/list':
-      return result(id, { tools: TOOLS.map(({ name, description, inputSchema }) => ({ name, description, inputSchema })) });
+      return result(id, {
+        tools: TOOLS.map(({ name, description, inputSchema, _meta }) =>
+          _meta ? { name, description, inputSchema, _meta } : { name, description, inputSchema }),
+      });
 
     case 'tools/call': {
       const tool = TOOL_MAP[params?.name];
       if (!tool) return error(id, -32602, `unknown tool: ${params?.name}`);
       try {
         const out = await tool.handler(params.arguments || {});
+        // Compact, not pretty-printed. The spec asks a tool returning structuredContent to ALSO
+        // return the serialized JSON as text for older clients, so the payload is unavoidably sent
+        // twice — pretty-printing made each copy ~2x larger again for nothing.
+        let text = JSON.stringify(out);
+        // Universal budget gate. Claude Code caps tool responses at 25,000 tokens
+        // (MAX_MCP_OUTPUT_TOKENS) and warns above 10,000; other hosts have their own limits. The
+        // per-tool `granularity`/`limit` handling should keep results well under this, so crossing
+        // it means the caller asked for something genuinely huge. Say so, with the arguments that
+        // would fix it — never truncate JSON mid-structure, which yields unparseable output and an
+        // agent that cannot tell a cut-off answer from a complete one.
+        if (text.length > BUDGET_CHARS) {
+          const advice = {
+            error: 'result_too_large',
+            tool: tool.name,
+            chars: text.length,
+            budgetChars: BUDGET_CHARS,
+            approxTokens: Math.round(text.length / 4),
+            fix: 'Narrow the request: name a single metric, pass start/end, set granularity to "month" or "year", lower limit, or page with cursor.',
+          };
+          log(`result too large for ${tool.name}: ${text.length} chars`);
+          return result(id, {
+            content: [{ type: 'text', text: JSON.stringify(advice) }],
+            structuredContent: advice,
+            isError: true,
+          });
+        }
         return result(id, {
-          content: [{ type: 'text', text: JSON.stringify(out, null, 2) }],
+          content: [{ type: 'text', text }],
           structuredContent: out,
           isError: false,
         });
