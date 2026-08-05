@@ -65,15 +65,15 @@ node apply-mcp-config.mjs     # detects installed clients and writes the config 
 {
   "mcpServers": {
     "health-export": {
-      "command": "node",
-      "args": ["REPLACE_WITH_ABSOLUTE_PATH/server.mjs"],
+      "command": "npx",
+      "args": ["-y", "health-export-mcp"],
       "env": { "HEALTH_DATA_DIR": "~/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents" }
     }
   }
 }
 ```
 
-> Get the absolute path to paste above: `node -e "console.log(process.cwd()+'/server.mjs')"` (run inside the repo).
+> `npx` fetches the published package at run time (npm verifies package integrity) — it runs anywhere, no clone or absolute path needed. Prefer to pin a vetted local checkout instead? Use `"command": "node", "args": ["REPLACE_WITH_ABSOLUTE_PATH/server.mjs"]` — get the path with `node -e "console.log(process.cwd()+'/server.mjs')"` inside the repo.
 > Or skip JSON entirely — drag **`health-export.mcpb`** into **Claude Desktop → Settings → Extensions**.
 
 **Cursor / VS Code:** `node gen-deeplinks.mjs` prints one-click install links.
