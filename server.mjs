@@ -17,7 +17,14 @@ const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
 
 // ~25,000 tokens at the usual ~4 chars/token, matching Claude Code's MAX_MCP_OUTPUT_TOKENS default.
 // Override with HEALTH_MAX_RESULT_CHARS when a host allows more.
-const BUDGET_CHARS = Number(process.env.HEALTH_MAX_RESULT_CHARS || 100000);
+// A NON-NUMERIC override used to disable the gate entirely: Number("200k") is NaN, and every
+// `wireChars > NaN` comparison is false, so an unbounded result shipped. Fall back to the default
+// rather than trusting whatever was set.
+const BUDGET_CHARS = (() => {
+  const raw = process.env.HEALTH_MAX_RESULT_CHARS;
+  const n = raw == null ? NaN : Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : 100000;
+})();
 
 // Optional LAN push: when HEALTH_LISTEN=1, also accept HTTP/WebSocket pushes from the iOS app
 // (the "WebSocket" path) in THIS same process — no separate daemon. Logs only to stderr so the
@@ -159,16 +166,21 @@ async function handle(msg) {
         // it means the caller asked for something genuinely huge. Say so, with the arguments that
         // would fix it — never truncate JSON mid-structure, which yields unparseable output and an
         // agent that cannot tell a cut-off answer from a complete one.
-        if (text.length > BUDGET_CHARS) {
+        // Gate the WIRE size, not one copy of it. The comment above records that the payload goes
+        // out twice — once as content[0].text and once as structuredContent — and the gate then
+        // measured a single copy, so a 99k result sailed through a 100k budget and delivered ~198k
+        // to a host that had been told 100k was the limit.
+        const wireChars = text.length * 2;
+        if (wireChars > BUDGET_CHARS) {
           const advice = {
             error: 'result_too_large',
             tool: tool.name,
-            chars: text.length,
+            chars: wireChars,
             budgetChars: BUDGET_CHARS,
-            approxTokens: Math.round(text.length / 4),
+            approxTokens: Math.round(wireChars / 4),
             fix: 'Narrow the request: name a single metric, pass start/end, set granularity to "month" or "year", lower limit, or page with cursor.',
           };
-          log(`result too large for ${tool.name}: ${text.length} chars`);
+          log(`result too large for ${tool.name}: ${wireChars} chars on the wire (${text.length} x2)`);
           return result(id, {
             content: [{ type: 'text', text: JSON.stringify(advice) }],
             structuredContent: advice,

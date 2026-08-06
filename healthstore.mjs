@@ -92,10 +92,44 @@ function readJSONCached(file, fallback) {
   return value;
 }
 
+/** Highest cache schema this server understands. The app writes `_meta.schema`; anything with a
+ *  higher MAJOR is a newer app paired with an older `.mcpb`, which we refuse loudly rather than
+ *  silently mis-reading. Absent `_meta` means a pre-1.2 cache, which is schema 1 by definition. */
+export const SUPPORTED_SCHEMA = 1;
+
 export async function loadMetrics() {
   if (!pairing().ok) return {};
-  return readJSONCached(path.join(DATA_DIR, '.health-cache.json'), {});
+  const raw = readJSONCached(path.join(DATA_DIR, '.health-cache.json'), {});
+  const meta = raw._meta;
+  if (meta && Number(meta.schema) > SUPPORTED_SCHEMA) {
+    throw new Error(
+      `This health cache was written by Health Export ${meta.app ?? 'a newer version'} using ` +
+      `cache schema ${meta.schema}, but this MCP server only understands ${SUPPORTED_SCHEMA}. ` +
+      // The package `@healthexport/mcp` does not exist — package.json is `private: true`.
+      // These are the two channels the site and SKILL.md actually document.
+      `Update the Health Export MCP server — reinstall the bundle from https://www.healthexport.dev/health-export.mcpb, or re-download https://www.healthexport.dev/mcp/healthstore.mjs — reading it anyway ` +
+      `could report wrong numbers.`);
+  }
+  // NULL PROTOTYPE. Every existence check here is `metrics[name]`, so inherited keys answered for
+  // metrics that do not exist: `get_health_metrics({metric:"constructor"})` returned a fabricated
+  // entry with an empty unit instead of "unknown metric", and so did "toString" and
+  // "hasOwnProperty". An agent probing names — or a user typo — got a plausible empty result rather
+  // than an error. A prototype-less object makes the whole class unreachable in one line, rather
+  // than requiring every call site to remember Object.hasOwn.
+  //
+  // Derived ONCE per parsed file and memoized alongside it. Rebuilding it per call would have
+  // silently defeated the (mtime, size) memoization — every caller would get a fresh object and
+  // pay a full copy of a cache that reaches tens of MB.
+  if (viewCache.raw !== raw) {
+    const { _meta, ...rest } = raw;
+    viewCache = { raw, view: Object.assign(Object.create(null), meta === undefined ? raw : rest) };
+  }
+  return viewCache.view;
 }
+
+/// The prototype-less view of the last parsed cache, keyed on the parsed object's identity so it is
+/// invalidated exactly when `readJSONCached` re-reads the file.
+let viewCache = { raw: null, view: Object.create(null) };
 
 export async function loadWorkouts() {
   if (!pairing().ok) return [];
@@ -196,10 +230,22 @@ function coverageOf(m) {
   return { firstDate: daily[0]?.d || null, lastDate: daily[daily.length - 1]?.d || null, days: daily.length };
 }
 
+/** True when `how` cannot be honoured for this metric and a different one was used instead. */
+export function aggregationWasAdjusted(how, cumulative) {
+  return how === 'sum' && !cumulative;
+}
+
 function aggregate(values, how, cumulative) {
   if (!values.length) return null;
   switch (how) {
-    case 'sum':   return round(values.reduce((a, b) => a + b, 0));
+    // Summing a NON-cumulative series is arithmetic on the wrong axis: 365 daily resting heart
+    // rates add up to ~22,000 bpm, a number that means nothing but renders like any other. The
+    // Swift twin (`AskEngine.aggregate`) already fell back to the mean here; this side did not, so
+    // the same question asked through the MCP server and through Ask returned different answers.
+    // Callers are told via `aggregationAdjusted` rather than being silently corrected.
+    case 'sum':   return round(cumulative
+                    ? values.reduce((a, b) => a + b, 0)
+                    : values.reduce((a, b) => a + b, 0) / values.length);
     case 'min':   return round(Math.min(...values));
     case 'max':   return round(Math.max(...values));
     case 'avg':   return round(values.reduce((a, b) => a + b, 0) / values.length);
@@ -239,6 +285,10 @@ export async function status() {
 }
 
 export async function listMetrics() {
+  // Locked returns {} from loadMetrics, so without this the tool answered {metrics: []} with
+  // isError:false — telling an agent the user simply has no health data. get_mcp_status already
+  // reports the lock correctly, which made the inconsistency worse.
+  assertUnlocked();
   const metrics = await loadMetrics();
   return Object.entries(metrics).map(([name, m]) => ({
     name,
@@ -251,8 +301,16 @@ export async function listMetrics() {
   })).sort((a, b) => a.name.localeCompare(b.name));
 }
 
+const AGGREGATIONS = new Set(['sum', 'avg', 'min', 'max', 'latest']);
+
 export async function getHealthMetrics({ metric, start, end, aggregation, granularity, limit } = {}) {
   assertUnlocked();
+  // The tool schema declares an enum and nothing enforced it, so `aggregation:"median"` fell through
+  // to the default branch, returned the MEAN, and echoed "median" back — a wrong number wearing a
+  // label the caller chose.
+  if (aggregation != null && !AGGREGATIONS.has(aggregation)) {
+    throw new Error(`aggregation must be one of ${[...AGGREGATIONS].join(', ')} (got "${aggregation}")`);
+  }
   start = assertDay(start, 'start');
   end = assertDay(end, 'end');
   if (start && end && start > end) throw new Error(`start (${start}) is after end (${end})`);
@@ -285,7 +343,12 @@ export async function getHealthMetrics({ metric, start, end, aggregation, granul
       // The aggregate is always computed over the FULL filtered range, never over the rolled-up
       // points, so rolling up can never change the answer to "what was my total".
       aggregate: aggregate(points.map((p) => p.v), aggregation, m.cumulative),
-      aggregation: aggregation || (m.cumulative ? 'sum' : 'avg'),
+      // Report what was ACTUALLY computed, not what was asked for.
+      aggregation: aggregationWasAdjusted(aggregation, m.cumulative)
+        ? 'avg' : (aggregation || (m.cumulative ? 'sum' : 'avg')),
+      ...(aggregationWasAdjusted(aggregation, m.cumulative) && {
+        aggregationAdjusted: `"${name}" is not a cumulative metric, so summing it would add values on the wrong axis (365 daily resting heart rates total ~22,000 bpm). The mean was returned instead.`,
+      }),
       pointsInRange: points.length,
       coverage: coverageOf(m),
     };
@@ -299,45 +362,134 @@ export async function getHealthMetrics({ metric, start, end, aggregation, granul
 export async function getTrends({ metric, window = 7 } = {}) {
   if (!metric) throw new Error('metric is required');
   assertUnlocked();
-  if (!(Number(window) > 0)) throw new Error(`window must be a positive number of days (got ${window})`);
+  // Floor FIRST, then validate. `window: 0.5` passed `> 0` and floored to 0, producing an empty
+  // result with no error — an agent asking for half a day was told, in effect, that there is no
+  // data. A window is a whole number of days or it is not a window.
+  if (!Number.isFinite(Number(window))) throw new Error(`window must be a number of days (got ${window})`);
   window = Math.floor(Number(window));
+  if (!(window >= 1)) throw new Error(`window must be at least 1 whole day (got ${arguments[0].window})`);
   const metrics = await loadMetrics();
   const m = metrics[metric];
   if (!m) throw new Error(`unknown metric "${metric}"`);
   const daily = (m.daily || []).slice();
-  const recent = daily.slice(-window).map((p) => p.v);
-  const prior  = daily.slice(-window * 2, -window).map((p) => p.v);
+  // Windows are CALENDAR days, not "the last N recorded points". Slicing by count meant a 7-day
+  // window on a sparse metric — body mass, VO2 max, anything logged weekly — silently spanned two
+  // months, and the comparison was then between two arbitrary and unequal stretches of time
+  // labelled "7 days". Anchored to the newest recorded day rather than today, so a metric that
+  // stopped updating a month ago still compares its own last two windows instead of two empty ones.
+  const dayMs = 86400000;
+  const anchor = daily.length ? Date.parse(daily[daily.length - 1].d) : NaN;
+  const recentFrom = anchor - (window - 1) * dayMs;
+  const priorFrom  = anchor - (window * 2 - 1) * dayMs;
+  const inSpan = (p, from, to) => {
+    const t = Date.parse(p.d);
+    return Number.isFinite(t) && t >= from && t <= to;
+  };
+  const recent = Number.isFinite(anchor)
+    ? daily.filter((p) => inSpan(p, recentFrom, anchor)).map((p) => p.v) : [];
+  const prior = Number.isFinite(anchor)
+    ? daily.filter((p) => inSpan(p, priorFrom, recentFrom - dayMs)).map((p) => p.v) : [];
+  // NORMALISE BY THE NUMBER OF POINTS ACTUALLY IN EACH SIDE. `slice(-window*2, -window)` clamps
+  // silently, so a series shorter than 2*window gave a prior side with fewer points than recent —
+  // and for a cumulative metric both sides are SUMMED, so ten identical 10,000-step days with
+  // window: 7 returned changePercent: +133.3, direction: "up" for a perfectly flat series. The only
+  // hint was windowSatisfied: false, which an agent reading `direction` never sees.
+  //
+  // Comparing per-day rates makes unequal sides honest: a sum over 7 days against a sum over 3 is
+  // meaningless, but 10,000/day against 10,000/day is exactly right.
   const agg = (vs) => aggregate(vs, m.cumulative ? 'sum' : 'avg', m.cumulative);
+  const rate = (vs) => {
+    const a = agg(vs);
+    if (a == null || vs.length === 0) return null;
+    return m.cumulative ? a / vs.length : a;   // discrete metrics are already per-day means
+  };
   const r = agg(recent), p = agg(prior);
-  const changePct = (r != null && p != null && p !== 0) ? round(((r - p) / Math.abs(p)) * 100) : null;
+  const rRate = rate(recent), pRate = rate(prior);
+  const changePct = (rRate != null && pRate != null && pRate !== 0)
+    ? round(((rRate - pRate) / Math.abs(pRate)) * 100) : null;
   return {
     metric, unit: m.unit || '', window,
     recent: r, prior: p,
-    change: r != null && p != null ? round(r - p) : null,
+    // Point counts are part of the answer: without them a caller cannot tell a real change from an
+    // artefact of one side being shorter.
+    recentDays: recent.length, priorDays: prior.length,
+    change: (r != null && p != null && recent.length === prior.length) ? round(r - p) : null,
     changePercent: changePct,
     direction: changePct == null
       ? (r != null && p === 0 ? (r > 0 ? 'up' : 'flat') : 'unknown')   // rose from a 0 baseline
       : changePct > 1 ? 'up' : changePct < -1 ? 'down' : 'flat',
-    recentRange: { from: daily.slice(-window)[0]?.d, to: daily[daily.length - 1]?.d },
+    recentRange: Number.isFinite(anchor)
+      ? { from: new Date(recentFrom).toISOString().slice(0, 10), to: daily[daily.length - 1]?.d }
+      : { from: undefined, to: undefined },
     // An agent asking for a 90-day trend against 12 days of data was previously given a confident
     // answer with no hint that the window was not met. Both numbers are now explicit.
     daysAvailable: daily.length,
-    windowSatisfied: daily.length >= window * 2,
+    // The SPAN must be satisfied, not merely non-empty on both sides. A previous revision of this
+    // relaxed it to `recent.length > 0 && prior.length > 0`, which made a 365-day window against
+    // 400 days of history report satisfied while comparing 365 days to 35 — and the tool
+    // description tells agents that false means insufficient history.
+    windowSatisfied: Number.isFinite(anchor)
+      && Date.parse(daily[0].d) <= priorFrom
+      && recent.length > 0 && prior.length > 0,
+    ...(recent.length !== prior.length && {
+      note: `Windows are unequal (${recent.length} vs ${prior.length} recorded days). changePercent compares per-day rates; the raw change is omitted because the totals cover different spans.`,
+    }),
     coverage: coverageOf(m),
   };
 }
 
 export async function comparePeriods({ metric, periodA, periodB } = {}) {
   if (!metric || !periodA || !periodB) throw new Error('metric, periodA {start,end}, periodB {start,end} required');
+  // Both bounds of both periods, explicitly. The old guard checked only truthiness, so `{}` or a
+  // bare "2026-01" passed, start/end came out undefined, `inRange` then matched the ENTIRE history
+  // for both sides, and the tool returned change: 0, changePercent: 0 with isError:false — an
+  // agent cannot tell that from a genuine no-change result.
+  for (const [label, p] of [['periodA', periodA], ['periodB', periodB]]) {
+    if (typeof p !== 'object' || !p.start || !p.end) {
+      throw new Error(`${label} must be an object with both start and end as YYYY-MM-DD dates`);
+    }
+  }
   const a = await getHealthMetrics({ metric, start: periodA.start, end: periodA.end });
   const b = await getHealthMetrics({ metric, start: periodB.start, end: periodB.end });
   const av = a[metric]?.aggregate, bv = b[metric]?.aggregate;
-  const changePct = (av != null && bv != null && bv !== 0) ? round(((av - bv) / Math.abs(bv)) * 100) : null;
+  const na = a[metric]?.pointsInRange ?? 0, nb = b[metric]?.pointsInRange ?? 0;
+  // Span lengths ride along: comparing a 31-day month against a 28-day one is a legitimate thing to
+  // ask for and an illegitimate thing to do silently, especially for a cumulative metric.
+  const spanDays = (p) => Math.round((Date.parse(p.end) - Date.parse(p.start)) / 86400000) + 1;
+  const daysA = spanDays(periodA), daysB = spanDays(periodB);
+  // Per-day RATES, matching get_trends, WeeklyBrief and AskEngine. Summing both sides made two
+  // periods with different amounts of DATA look different even when the daily figures were
+  // identical: a 31-day span missing three days read as a 10% decline. `comparable` used to test
+  // span equality, which does not imply the totals are comparable — a gap inside an equal span is
+  // exactly the case it missed.
+  const cumulative = a[metric]?.cumulative ?? false;
+  const rate = (v, n) => (v == null || n === 0) ? null : (cumulative ? v / n : v);
+  const ra = rate(av, na), rb = rate(bv, nb);
+  const changePct = (ra != null && rb != null && rb !== 0) ? round(((ra - rb) / Math.abs(rb)) * 100) : null;
   return {
     metric, unit: a[metric]?.unit || '',
-    periodA: { ...periodA, value: av }, periodB: { ...periodB, value: bv },
-    change: av != null && bv != null ? round(av - bv) : null,
+    // When coverage is UNEQUAL the reported value is the per-day rate, not the total — matching
+    // `AskEngine.comparePeriods`, which switches to a daily average for exactly this case and says
+    // so in its label. Reporting one side's total against the other's is the arithmetic that made a
+    // 31-day span missing three days look like a 10% decline.
+    periodA: { ...periodA, value: (na === nb ? av : ra), days: daysA, pointsInRange: na },
+    periodB: { ...periodB, value: (na === nb ? bv : rb), days: daysB, pointsInRange: nb },
+    // A non-cumulative metric's value is a MEAN whatever the coverage, so calling it a "total"
+    // when the two spans happened to match was simply wrong for every such metric.
+    valueBasis: !cumulative ? 'per-day average' : (na === nb ? 'total' : 'per-day average'),
+    // The delta is stated on the SAME basis as the values above: totals when coverage matches,
+    // per-day rates when it does not. Omitting it entirely was the more conservative choice and the
+    // less useful one — "no difference in daily average" is a real answer, and it is what
+    // AskEngine.comparePeriods has always given. What must never happen is a total minus a total
+    // across different amounts of data.
+    change: na === nb
+      ? ((av != null && bv != null) ? round(av - bv) : null)      // same coverage ⇒ totals
+      : ((ra != null && rb != null) ? round(ra - rb) : null),     // otherwise per-day, as above
     changePercent: changePct,
+    comparable: daysA === daysB && na === nb,
+    ...((daysA !== daysB || na !== nb) && {
+      note: `Periods cover ${daysA} vs ${daysB} days and contain ${na} vs ${nb} recorded days. changePercent and change are both stated as PER-DAY rates, because the totals cover different amounts of data and are not comparable.`,
+    }),
   };
 }
 
@@ -347,6 +499,16 @@ export async function getStructuredExport({ metrics: names, start, end, granular
   end = assertDay(end, 'end');
   if (start && end && start > end) throw new Error(`start (${start}) is after end (${end})`);
   const all = await loadMetrics();
+  // Unknown names are an ERROR here too. `.filter((n) => all[n])` dropped them silently, so an
+  // agent that asked for three metrics and got two had no way to tell which was missing — or that
+  // anything had been dropped. `get_health_metrics` has always thrown for the same mistake.
+  if (names && names.length) {
+    const unknown = names.filter((n) => !all[n]);
+    if (unknown.length) {
+      throw new Error(`unknown metric${unknown.length > 1 ? 's' : ''} ` +
+        `${unknown.map((n) => `"${n}"`).join(', ')}. Use list_metrics to see available names.`);
+    }
+  }
   const pick = (names && names.length ? names : Object.keys(all)).filter((n) => all[n]).sort();
   const cap = Math.min(Number(limit) > 0 ? Number(limit) : DEFAULT_LIMIT, MAX_LIMIT);
 
@@ -354,7 +516,25 @@ export async function getStructuredExport({ metrics: names, start, end, granular
   // 2026-07-28 spec's "Stateful Tools" section blesses the alternative used here: a server-minted
   // opaque cursor returned in the result and handed back as an ordinary argument. The cursor is a
   // metric name, so it stays valid even if the cache is rewritten between calls.
-  const startIdx = cursor ? Math.max(0, pick.indexOf(String(cursor))) : 0;
+  // An unrecognised cursor must be an ERROR, not a silent restart. `indexOf` returns -1 for a
+  // cursor whose metric is no longer in `pick` — because the caller narrowed `metrics` between
+  // pages, or the cache was rewritten without it — and `Math.max(0, -1)` turned that into "start
+  // from the beginning", so an agent paginating in a loop re-served page 1 forever and could never
+  // finish. Failing loudly lets it restart deliberately instead of spinning.
+  // Resume at the first metric AT OR AFTER the cursor, rather than requiring an exact hit.
+  //
+  // `indexOf` alone re-served page one for an unrecognised cursor (`-1` → `Math.max(0,-1)` → 0), so
+  // an agent paginating in a loop could never finish. But rejecting an unrecognised cursor outright
+  // has the opposite failure: `pick` is sorted, and the app syncing a new metric mid-pagination
+  // inserts a name before the cursor — with a strict match the pages after it are fine, and the
+  // newly inserted metric is skipped forever while the caller believes it received the full
+  // catalogue. A successor search terminates in both cases and skips nothing.
+  let startIdx = 0;
+  if (cursor) {
+    const c = String(cursor);
+    const found = pick.findIndex((n) => n >= c);
+    startIdx = found < 0 ? pick.length : found;   // cursor past the end ⇒ an empty final page
+  }
 
   // Resolve granularity against each metric's SHARE of the budget, not the whole of it. Against the
   // whole budget a decade of daily data rolls up to ~120 monthly points per metric, so only three
@@ -408,6 +588,8 @@ const ALIASES = {
 };
 export async function queryHealthData({ question } = {}) {
   if (!question) throw new Error('question is required');
+  assertUnlocked();   // same reason as list_metrics: locked must not read as "no data"
+
   const q = question.toLowerCase();
   const all = await loadMetrics();
   let metric = null;

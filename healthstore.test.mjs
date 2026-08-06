@@ -101,8 +101,12 @@ test('get_trends says when the file cannot satisfy the window it was asked for',
 });
 
 test('get_trends rejects a nonsense window', async () => {
-  await assert.rejects(() => store.getTrends({ metric: 'step_count', window: 0 }), /positive number/);
-  await assert.rejects(() => store.getTrends({ metric: 'step_count', window: -7 }), /positive number/);
+  await assert.rejects(() => store.getTrends({ metric: 'step_count', window: 0 }), /at least 1 whole day/);
+  await assert.rejects(() => store.getTrends({ metric: 'step_count', window: -7 }), /at least 1 whole day/);
+  // 0.5 passed the old `> 0` check and then floored to 0, producing an EMPTY result with no error —
+  // an agent asking for half a day was told, in effect, that there is no data.
+  await assert.rejects(() => store.getTrends({ metric: 'step_count', window: 0.5 }), /at least 1 whole day/);
+  await assert.rejects(() => store.getTrends({ metric: 'step_count', window: 'seven' }), /number of days/);
 });
 
 test('structured export paginates and every metric appears exactly once across pages', async () => {

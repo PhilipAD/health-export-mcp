@@ -35,6 +35,13 @@ function expandTilde(p) {
   return (p === '~' || p.startsWith('~/')) ? path.join(os.homedir(), p.slice(1)) : p;
 }
 function readJSON(file, fb) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fb; } }
+// The merge base for an accumulated cache. ABSENT means start fresh; PRESENT-BUT-CORRUPT
+// must never become {} and overwrite the whole history — quarantine it, then start fresh.
+function readMergeBase(file, fb) {
+  if (!fs.existsSync(file)) return fb;
+  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch { try { const bak = `${file}.corrupt-${process.pid}`; fs.renameSync(file, bak); log(`quarantined unreadable ${file} -> ${bak}`); } catch {} return fb; }
+}
 const isLoopback = (h) => h === '127.0.0.1' || h === '::1' || h === 'localhost';
 
 // Validate/sanitise a pushed summary so a malicious LAN client can't poison the agent's context.
@@ -76,7 +83,7 @@ function writeCache(dir, json) {
   const file = path.join(dir, '.health-cache.json');
   const tmp = `${file}.tmp-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;  // unique → no concurrent-write race
   fs.mkdirSync(dir, { recursive: true });
-  const merged = mergeCache(readJSON(file, {}), json);
+  const merged = mergeCache(readMergeBase(file, {}), json);
   fs.writeFileSync(tmp, JSON.stringify(merged, null, 2));
   fs.renameSync(tmp, file);
   log(`merged ${Object.keys(sanitize(json)).length} -> ${Object.keys(merged).length} metrics in ${file}`);
@@ -109,33 +116,50 @@ export function startReceiver({
     if (req.headers['origin'] !== undefined) return false;
     const raw = String(req.headers['host'] || '');
     const v6 = raw.match(/^\[([^\]]+)\]/);                 // "[::1]:27184" → "::1"  (strip brackets BEFORE the colon split)
-    const hn = v6 ? v6[1] : raw.split(':')[0];             // "127.0.0.1:27184" → "127.0.0.1"; bare "::1" stays whole
+    const hn = (v6 ? v6[1] : raw.split(':')[0]).toLowerCase().replace(/%.*$/, ''); // strip port; strip IPv6 zone (%en0)
     if (!hn) return false;
-    return hn === 'localhost' || net.isIP(hn) !== 0;       // loopback name or any valid IPv4/IPv6 literal (rejects malformed)
+    // loopback name, valid IPv4/IPv6 literal, or a private DNS name (Tailscale MagicDNS / mDNS). Browser
+    // DNS-rebinding still can't pass: browsers always send an Origin header (rejected above) and a token is
+    // mandatory on a non-loopback bind.
+    return hn === 'localhost' || hn.endsWith('.ts.net') || hn.endsWith('.local') || net.isIP(hn) !== 0;
   };
-  const allow = (req) => hostOk(req) && tokenOk(req);
+  // Distinguish "wrong/blocked host" (403) from "bad token" (401) so the app can tell the user the real reason.
+  const gate = (req) => {
+    if (!hostOk(req)) return { ok: false, code: 403, msg: 'host not permitted' };
+    if (!tokenOk(req)) return { ok: false, code: 401, msg: 'unauthorized — check pairing secret' };
+    return { ok: true, code: 200, msg: 'ok' };
+  };
 
+  const json = (res, code, obj) => { res.statusCode = code; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(obj)); };
   const server = http.createServer((req, res) => {
     if (req.method === 'POST' && req.url === '/health-cache') {
-      if (!allow(req)) { res.statusCode = 401; return res.end('unauthorized'); }
-      let body = '';
+      const g = gate(req); if (!g.ok) return json(res, g.code, { ok: false, hae: true, error: g.msg });
+      let body = '', tooBig = false;
       req.setEncoding('utf8');
-      req.on('data', (c) => { body += c; if (body.length > MAX_BODY) req.destroy(); });
+      req.on('data', (c) => {
+        body += c;
+        if (body.length > MAX_BODY && !tooBig) { tooBig = true; json(res, 413, { ok: false, hae: true, error: 'payload too large' }); req.destroy(); }
+      });
       req.on('end', () => {
-        try { const n = onCache(JSON.parse(body)); res.statusCode = 200; res.end(JSON.stringify({ ok: true, metrics: n })); }
-        catch (e) { log('bad POST body', e.message); res.statusCode = 400; res.end('bad json'); }
+        if (tooBig || res.writableEnded) return;
+        let parsed;
+        try { parsed = JSON.parse(body); }
+        catch (e) { return json(res, 400, { ok: false, hae: true, error: 'invalid JSON' }); }   // 400 = parse only
+        if (parsed && parsed._test === true) return json(res, 200, { ok: true, hae: true, test: true }); // probe: never touch the cache
+        try { const n = onCache(parsed); json(res, 200, { ok: true, hae: true, metrics: n }); }
+        catch (e) { log('write failed', e.message); json(res, 500, { ok: false, hae: true, error: 'write failed: ' + (e.code || e.message) }); } // 500 = disk/write
       });
       return;
     }
-    if (req.method === 'GET' && req.url === '/healthz') { res.statusCode = 200; return res.end(JSON.stringify({ ok: true, port })); }
-    res.statusCode = 404; res.end('not found');
+    if (req.method === 'GET' && req.url === '/healthz') { return json(res, 200, { ok: true, hae: true, port }); }
+    json(res, 404, { ok: false, hae: true, error: 'not found' });
   });
 
   server.on('upgrade', (req, socket) => {
     const key = req.headers['sec-websocket-key'];
     const up = String(req.headers['upgrade'] || '').toLowerCase() === 'websocket';
     if (!up || !key || !req.url.startsWith('/health-cache-ws')) { socket.destroy(); return; }
-    if (!allow(req)) { socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n'); socket.destroy(); return; }
+    const g = gate(req); if (!g.ok) { socket.write(`HTTP/1.1 ${g.code} ${g.msg}\r\nConnection: close\r\n\r\n`); socket.destroy(); return; }
 
     const accept = crypto.createHash('sha1').update(key + WS_GUID, 'binary').digest('base64');
     socket.write(
@@ -162,8 +186,24 @@ export function startReceiver({
     socket.on('error', (e) => log('ws socket error', e.message));
   });
 
-  server.on('error', (e) => log('server error', e.message));
-  server.listen(port, host, () => log(`listening on ${host}:${port}${token ? ' (token required)' : ' (loopback only)'}`));
+  server.on('error', (e) => {
+    if (e.code === 'EADDRINUSE') log(`PORT ${port} IN USE — stop the other process, or set HEALTH_LISTEN_PORT to a free port (e.g. ${port + 1}).`);
+    else if (e.code === 'EACCES') log(`PERMISSION DENIED binding ${host}:${port} — use a port >= 1024.`);
+    else if (e.code === 'EADDRNOTAVAIL') log(`ADDRESS ${host} NOT AVAILABLE here — use 0.0.0.0 or a local IP.`);
+    else log('server error', e.message);
+  });
+  server.listen(port, host, () => {
+    log(`listening on ${host}:${port}${token ? ' (token required)' : ' (loopback only)'}`);
+    if (!isLoopback(host)) {                        // print the exact address(es) to type on the iPhone
+      const addrs = [];
+      const nets = os.networkInterfaces();
+      for (const name of Object.keys(nets)) for (const ni of nets[name] || []) {
+        if (ni.family === 'IPv4' && !ni.internal) addrs.push(ni.address);
+      }
+      const hn = os.hostname(); addrs.push(hn.includes('.') ? hn : `${hn}.local`);
+      for (const a of addrs) log(`  -> on your iPhone, enter:  ${a}:${port}`);
+    }
+  });
   return server;
 }
 

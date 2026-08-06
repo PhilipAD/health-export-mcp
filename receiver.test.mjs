@@ -82,13 +82,26 @@ const rc = await post('/health-cache', CACHE, { 'x-health-token': TOKEN, host: `
 assert.equal(rc.status, 200); ok('Host 127.0.0.1:port (IPv4 literal) → 200');
 
 const rd = await post('/health-cache', CACHE, { 'x-health-token': TOKEN, host: `1.2.3.4.5:${PORT}` });
-assert.equal(rd.status, 401); ok('malformed-IP Host (1.2.3.4.5) → 401');
+assert.equal(rd.status, 403); ok('malformed-IP Host (1.2.3.4.5) → 403 (host, not token)');
 
 const re = await post('/health-cache', CACHE, { 'x-health-token': TOKEN, host: `attacker.example.com:${PORT}` });
-assert.equal(re.status, 401); ok('domain-name Host (DNS-rebinding vector) → 401');
+assert.equal(re.status, 403); ok('domain-name Host (DNS-rebinding vector) → 403');
 
 const rf = await post('/health-cache', CACHE, { 'x-health-token': TOKEN, host: `localhost:${PORT}`, origin: 'http://evil.example.com' });
-assert.equal(rf.status, 401); ok('any Origin header present (browser/rebinding) → 401');
+assert.equal(rf.status, 403); ok('any Origin header present (browser/rebinding) → 403');
+
+const rg = await post("/health-cache", CACHE, { "x-health-token": TOKEN, host: `box.tailnet.ts.net:${PORT}` });
+assert.equal(rg.status, 200); ok("Tailscale MagicDNS Host (*.ts.net) → 200");
+
+// connection-test ping must NOT write the cache file, and must return 200 {test:true}
+fs.rmSync(cacheFile, { force: true });
+const rp = await post('/health-cache', { _test: true }, { 'x-health-token': TOKEN });
+assert.equal(rp.status, 200); assert.ok(JSON.parse(rp.body).test === true); ok('{_test:true} ping → 200 {test:true}');
+assert.ok(!fs.existsSync(cacheFile), 'ping must not create the cache file'); ok('ping did not write the cache file');
+
+// bad token still 401 (distinct from 403 host); write CACHE back for any later asserts
+const rt = await post('/health-cache', CACHE, { 'x-health-token': 'NOPE' });
+assert.equal(rt.status, 401); ok('bad token → 401 (distinct from 403 host)');
 
 server.close();
 fs.rmSync(dir, { recursive: true, force: true });
