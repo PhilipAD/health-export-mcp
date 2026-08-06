@@ -18,3 +18,9 @@ jobs:
         run: node --check server.mjs
       - name: Integration tests
         run: npm test
+      # Runs on every push, not only at publish time. CI checks out a CLEAN tree, so on its own it
+      # would never see the untracked local files that leaked into 1.2.0 — its job here is to catch
+      # a bad `files` allowlist or a forbidden path committed to the repo. The prepublishOnly hook
+      # is what guards the working directory an actual publish is packed from.
+      - name: Publish tarball contains only the server
+        run: npm run check:package
