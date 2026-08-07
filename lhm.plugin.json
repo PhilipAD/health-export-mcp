@@ -1,0 +1,179 @@
+{
+  "identifier": "philipad-health-export-mcp",
+  "name": "health-export-mcp",
+  "version": "1.0.1",
+  "author": "Philip D'Souza",
+  "authorUrl": "https://github.com/PhilipAD",
+  "category": "Health & Wellness",
+  "description": "Query 190 Apple Health metrics from any MCP agent — zero-dependency, read-only, local-first.",
+  "tags": [
+    "apple-health",
+    "healthkit",
+    "mcp",
+    "mcp-server",
+    "health-data",
+    "hrv",
+    "sleep",
+    "quantified-self",
+    "ai-agents",
+    "claude",
+    "cursor",
+    "chatgpt"
+  ],
+  "tools": [
+    {
+      "name": "get_mcp_status",
+      "description": "Health check: data source, how many metrics/workouts are available, and the most recent data date. Call this first to confirm the bridge is connected.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "list_metrics",
+      "description": "List every available Apple Health metric with its unit, day count, and date range. Use this to discover metric names before querying.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_health_metrics",
+      "description": "Get daily values for a metric (or all metrics) over an optional date range, with an aggregate (avg/sum/min/max/latest). The core data-retrieval tool.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "type": "string",
+            "description": "Metric name, e.g. step_count, heart_rate, sleep_analysis. Omit to return every available metric."
+          },
+          "start": {
+            "type": "string",
+            "description": "Start of the date range (inclusive), YYYY-MM-DD. Omit for the earliest available data."
+          },
+          "end": {
+            "type": "string",
+            "description": "End of the date range (inclusive), YYYY-MM-DD. Omit for the most recent available data."
+          },
+          "aggregation": {
+            "type": "string",
+            "enum": [
+              "avg",
+              "sum",
+              "min",
+              "max",
+              "latest"
+            ],
+            "description": "How to reduce each day's samples to one value: avg, sum, min, max, or latest. Defaults to avg."
+          }
+        }
+      }
+    },
+    {
+      "name": "get_trends",
+      "description": "Compare the most recent N-day window against the prior N days for a metric — returns change, percent change and direction (up/down/flat).",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "type": "string",
+            "description": "Metric name to analyze the trend for, e.g. heart_rate, step_count, hrv."
+          },
+          "window": {
+            "type": "integer",
+            "description": "Number of days in each comparison window (default 7): the most recent N days are compared against the prior N days."
+          }
+        },
+        "required": [
+          "metric"
+        ]
+      }
+    },
+    {
+      "name": "compare_periods",
+      "description": "Compare a metric between two arbitrary date periods (A vs B) — returns each aggregate plus the change and percent change.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "type": "string",
+            "description": "Metric name to compare across the two periods, e.g. resting_heart_rate, step_count."
+          },
+          "periodA": {
+            "type": "object",
+            "description": "The first date range to compare (the baseline period).",
+            "properties": {
+              "start": {
+                "type": "string",
+                "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+              },
+              "end": {
+                "type": "string",
+                "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+              }
+            }
+          },
+          "periodB": {
+            "type": "object",
+            "description": "The second date range, compared against period A.",
+            "properties": {
+              "start": {
+                "type": "string",
+                "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+              },
+              "end": {
+                "type": "string",
+                "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+              }
+            }
+          }
+        },
+        "required": [
+          "metric",
+          "periodA",
+          "periodB"
+        ]
+      }
+    },
+    {
+      "name": "get_structured_export",
+      "description": "Return clean structured JSON for the chosen metrics/date range — ideal to drop straight into an agent's context window.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "metrics": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "description": "Metric names to include, e.g. [\"step_count\",\"heart_rate\"]. Omit to include every available metric."
+          },
+          "start": {
+            "type": "string",
+            "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+          },
+          "end": {
+            "type": "string",
+            "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+          }
+        }
+      }
+    },
+    {
+      "name": "query_health_data",
+      "description": "Natural-language convenience: pass a question (e.g. \"average HRV last month\") and get routed structured results. Prefer the specific tools above when you can.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": "string",
+            "description": "A natural-language question about the health data, e.g. \"average HRV last month\" or \"how did my steps trend this week\"."
+          }
+        },
+        "required": [
+          "question"
+        ]
+      }
+    }
+  ]
+}

@@ -19,3 +19,5 @@ references/tools/
 scripts/exa_search.py
 scripts/grok_query.py
 **/*.experiment.md
+scripts/perplexity_query.py
+docs/cursor-directory-submission.md
