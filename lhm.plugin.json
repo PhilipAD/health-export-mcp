@@ -1,7 +1,7 @@
 {
   "identifier": "philipad-health-export-mcp",
   "name": "health-export-mcp",
-  "version": "1.0.1",
+  "version": "1.3.0",
   "author": "Philip D'Souza",
   "authorUrl": "https://github.com/PhilipAD",
   "category": "Health & Wellness",
@@ -155,6 +155,19 @@
           "end": {
             "type": "string",
             "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+          }
+        }
+      }
+    },
+    {
+      "name": "get_intraday",
+      "description": "The current hour-by-hour window from the iOS app's hourly automations (health-intraday.json, app 1.4+): hourly points plus latest value per metric. Replaced on every run — a live within-day view, not history.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "metric": {
+            "type": "string",
+            "description": "Metric name to filter, e.g. heart_rate. Omit for every metric in the window."
           }
         }
       }

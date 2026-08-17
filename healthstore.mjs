@@ -280,7 +280,75 @@ export async function status() {
     metricCount: names.length,
     workoutCount: Array.isArray(workouts) ? workouts.length : 0,
     lastDataDate: lastDate,
+    // Additive: lets an agent see whether a live hourly window exists without calling the tool.
+    intraday: (() => {
+      const st = intradayStat();
+      return st ? { present: true, lastWrite: new Date(st.mtimeMs).toISOString() }
+                : { present: false };
+    })(),
     metrics: names.sort(),
+  };
+}
+
+// ---- Intraday (hourly) ----------------------------------------------------
+// The iOS app's HOURLY automations (app 1.4+) write their envelope to `health-intraday.json`
+// beside the daily cache: HAE envelope shape, whole-file REPLACED on every run. It is a live
+// within-day window, not an accumulating history — deliberately separate so hourly figures can
+// never overwrite the daily statistics. Day-level questions belong to the daily tools.
+const INTRADAY_FILE = 'health-intraday.json';
+
+function intradayStat() {
+  try {
+    const st = fs.statSync(path.join(DATA_DIR, INTRADAY_FILE));
+    return st.isFile() ? st : null;
+  } catch { return null; }
+}
+
+export async function getIntraday({ metric } = {}) {
+  assertUnlocked();
+  const st = intradayStat();
+  const env = readJSON(path.join(DATA_DIR, INTRADAY_FILE), null);
+  const rows = env?.data?.metrics;
+  if (!st || !Array.isArray(rows) || rows.length === 0) {
+    return {
+      available: false,
+      note: 'No intraday window yet. It appears when the iOS app (1.4 or later) runs an HOURLY automation — for example "Vitals (Intraday)" on the Schedule tab — with iCloud or a folder destination on. Daily data is unaffected: use get_health_metrics and the other tools for that.',
+    };
+  }
+  let metrics = rows
+    .filter((m) => m && typeof m.name === 'string')
+    .map((m) => {
+      const points = (Array.isArray(m.data) ? m.data : []).map(({ date, qty, ...rest }) => ({
+        t: typeof date === 'string' ? date : null,
+        v: qty ?? null,
+        ...rest,
+      }));
+      return {
+        name: m.name,
+        unit: m.units || m.unit || '',
+        points,
+        latest: points.length ? points[points.length - 1] : null,
+      };
+    })
+    .sort((a, b) => a.name.localeCompare(b.name));
+  if (metric) {
+    const hit = metrics.filter((m) => m.name === metric);
+    if (!hit.length) {
+      return {
+        available: true,
+        metric,
+        found: false,
+        note: `"${metric}" is not in the current intraday window — the window only holds what the hourly automation exports. Present: ${metrics.map((m) => m.name).join(', ') || 'none'}.`,
+      };
+    }
+    metrics = hit;
+  }
+  return {
+    available: true,
+    file: INTRADAY_FILE,
+    lastWrite: new Date(st.mtimeMs).toISOString(),
+    replacedEachRun: true,
+    metrics,
   };
 }
 

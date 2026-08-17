@@ -2,20 +2,34 @@
   "manifest_version": "0.3",
   "name": "health-export-ai",
   "display_name": "Health Export AI",
-  "version": "1.2.2",
+  "version": "1.3.0",
   "description": "Query your Apple Health data — exported by the Health Export AI iOS app to iCloud Drive — from any MCP agent. Local-first, read-only, zero dependencies.",
   "long_description": "A zero-dependency MCP server that exposes 190 Apple Health metrics (exported by the Health Export AI iOS app into an iCloud Drive folder) to any MCP-compatible agent — Claude Desktop, opencode, Cursor, OpenClaw, Hermes. No bridge, no Docker, no HTTP receiver: the server reads the synced cache file directly over stdio. Tools: get_mcp_status, list_metrics, get_health_metrics, get_trends, compare_periods, get_structured_export, query_health_data. Get the companion iOS app on the App Store: https://apps.apple.com/app/id6784185201",
-  "author": { "name": "PhilipAD", "url": "https://github.com/PhilipAD" },
+  "author": {
+    "name": "PhilipAD",
+    "url": "https://github.com/PhilipAD"
+  },
   "homepage": "https://www.healthexport.dev",
   "documentation": "https://www.healthexport.dev",
   "license": "MIT",
-  "keywords": ["apple health", "healthkit", "mcp", "hrv", "sleep", "steps", "local-first", "agents"],
+  "keywords": [
+    "apple health",
+    "healthkit",
+    "mcp",
+    "hrv",
+    "sleep",
+    "steps",
+    "local-first",
+    "agents"
+  ],
   "server": {
     "type": "node",
     "entry_point": "server.mjs",
     "mcp_config": {
       "command": "node",
-      "args": ["${__dirname}/server.mjs"],
+      "args": [
+        "${__dirname}/server.mjs"
+      ],
       "env": {
         "HEALTH_DATA_DIR": "${user_config.health_data_dir}",
         "PAIRING_SECRET": "${user_config.pairing_secret}"
@@ -24,13 +38,38 @@
   },
   "tools_generated": false,
   "tools": [
-    { "name": "get_mcp_status", "description": "Health check: source, metric/workout counts, latest data date. Call first." },
-    { "name": "list_metrics", "description": "Every available metric with unit, day count, date range." },
-    { "name": "get_health_metrics", "description": "Daily values for a metric over a date range, with an aggregate." },
-    { "name": "get_trends", "description": "Recent N-day window vs the prior N days — change, % change, direction." },
-    { "name": "compare_periods", "description": "A metric across two arbitrary date periods (A vs B)." },
-    { "name": "get_structured_export", "description": "Clean JSON for chosen metrics/range for an agent's context." },
-    { "name": "query_health_data", "description": "Natural-language convenience query routed to structured results." }
+    {
+      "name": "get_mcp_status",
+      "description": "Health check: source, metric/workout counts, latest data date. Call first."
+    },
+    {
+      "name": "list_metrics",
+      "description": "Every available metric with unit, day count, date range."
+    },
+    {
+      "name": "get_health_metrics",
+      "description": "Daily values for a metric over a date range, with an aggregate."
+    },
+    {
+      "name": "get_trends",
+      "description": "Recent N-day window vs the prior N days — change, % change, direction."
+    },
+    {
+      "name": "compare_periods",
+      "description": "A metric across two arbitrary date periods (A vs B)."
+    },
+    {
+      "name": "get_structured_export",
+      "description": "Clean JSON for chosen metrics/range for an agent's context."
+    },
+    {
+      "name": "get_intraday",
+      "description": "Today's hour-by-hour window from the app's hourly automations (health-intraday.json, app 1.4+). Replaced on every run — a live within-day view, not history."
+    },
+    {
+      "name": "query_health_data",
+      "description": "Natural-language convenience query routed to structured results."
+    }
   ],
   "user_config": {
     "health_data_dir": {

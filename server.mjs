@@ -11,7 +11,7 @@
 
 import * as store from './healthstore.mjs';
 
-const SERVER = { name: 'health-export-ai', version: '1.0.0' };
+const SERVER = { name: 'health-export-ai', version: '1.3.0' };
 const DEFAULT_PROTOCOL = '2025-06-18';
 const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
 
@@ -110,6 +110,17 @@ const TOOLS = [
     },
     _meta: BIG_RESULT_META,
     handler: (a) => store.getStructuredExport(a),
+  },
+  {
+    name: 'get_intraday',
+    description: "The current hour-by-hour window from the iOS app's HOURLY automations (health-intraday.json, app 1.4+): each metric's hourly points plus its latest value. The file is REPLACED on every hourly run — a live within-day view, not history, so use get_health_metrics for day-level questions. Returns available:false with setup guidance when no hourly automation has delivered yet.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        metric: { type: 'string', description: 'Metric name to filter, e.g. heart_rate. Omit for every metric in the window.' },
+      },
+    },
+    handler: (a) => store.getIntraday(a),
   },
   {
     name: 'query_health_data',

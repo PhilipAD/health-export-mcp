@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/architecture.svg" alt="Apple Health exports to iCloud, a folder, or your LAN; health-export-mcp reads it and serves 7 query tools to your AI agent" width="100%" />
+  <img src="assets/architecture.svg" alt="Apple Health exports to iCloud, a folder, or your LAN; health-export-mcp reads it and serves 8 query tools to your AI agent" width="100%" />
 </p>
 
 > Ask your agent: *"Compare my HRV this week vs last week and tell me if I'm recovering."* — it calls the tools and answers from your **actual numbers**.
@@ -104,7 +104,7 @@ Restart the client and try:
 
 ---
 
-## The 7 MCP tools
+## The 8 MCP tools
 
 | Tool | What it does |
 |---|---|
@@ -114,6 +114,7 @@ Restart the client and try:
 | `get_trends` | Recent N-day window vs the prior N days — change, % change, direction. |
 | `compare_periods` | A metric across two arbitrary date periods (A vs B). |
 | `get_structured_export` | Clean JSON for chosen metrics/range — drop straight into context. |
+| `get_intraday` | Today's hour-by-hour window from the app's hourly automations (`health-intraday.json`, app 1.4+) — replaced each run, latest value per metric. |
 | `query_health_data` | Natural-language convenience: *"average HRV last month"* → routed structured results. |
 
 **Coverage:** 190 Apple Health metrics across activity, heart, HRV, mobility, respiratory, body, sleep, hearing, and nutrition — plus workouts.
@@ -233,7 +234,7 @@ stdio transport (newline-delimited JSON-RPC 2.0) — the universal MCP transport
 
 ## How it works
 
-The iOS app reads Apple Health (read-only) and writes a compact `.health-cache.json` to the destination you choose. This server reads that file and exposes the 7 tools above over MCP. No bridge, no Docker, no database — just a file and stdio.
+The iOS app reads Apple Health (read-only) and writes a compact `.health-cache.json` to the destination you choose. This server reads that file and exposes the 8 tools above over MCP. No bridge, no Docker, no database — just a file and stdio.
 
 ```
 Apple Health → Health Export AI (iOS) → .health-cache.json → health-export-mcp → MCP client → you

@@ -77,8 +77,8 @@ async function main() {
 
   const tl = await c.req('tools/list');
   const names = (tl.result?.tools || []).map((t) => t.name);
-  ok(names.length === 7, `tools/list → ${names.length} tools`);
-  for (const t of ['get_mcp_status', 'list_metrics', 'get_health_metrics', 'get_trends', 'compare_periods', 'get_structured_export', 'query_health_data'])
+  ok(names.length === 8, `tools/list → ${names.length} tools`);
+  for (const t of ['get_mcp_status', 'list_metrics', 'get_health_metrics', 'get_trends', 'compare_periods', 'get_structured_export', 'get_intraday', 'query_health_data'])
     ok(names.includes(t), `tool present: ${t}`);
 
   const st = await c.call('get_mcp_status');

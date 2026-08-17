@@ -172,3 +172,61 @@ test('rewriting the cache invalidates the memo', async () => {
   const after = await store.listMetrics();
   assert.equal(after.length, 4, 'a rewritten cache must be re-read');
 });
+
+// ---- Intraday window (health-intraday.json, app 1.4+) ----------------------
+
+test('intraday: absent file answers available:false with setup guidance, never an error', async () => {
+  const out = await store.getIntraday();
+  assert.equal(out.available, false);
+  assert.match(out.note, /hourly automation/i);
+});
+
+test('intraday: parses the HAE envelope, keeps hour resolution, reports latest', async () => {
+  const envelope = { data: { metrics: [
+    { name: 'heart_rate', units: 'count/min', data: [
+      { date: '2026-08-17 08:00:00 +0100', qty: 62 },
+      { date: '2026-08-17 09:00:00 +0100', qty: 71, min: 58, max: 84 },
+    ]},
+    { name: 'blood_oxygen_saturation', units: '%', data: [
+      { date: '2026-08-17 09:00:00 +0100', qty: 0.97 },
+    ]},
+  ]}};
+  fs.writeFileSync(path.join(DIR, 'health-intraday.json'), JSON.stringify(envelope));
+  const out = await store.getIntraday();
+  assert.equal(out.available, true);
+  assert.equal(out.replacedEachRun, true);
+  assert.equal(out.metrics.length, 2);
+  const hr = out.metrics.find((m) => m.name === 'heart_rate');
+  assert.equal(hr.points.length, 2);
+  assert.equal(hr.points[1].v, 71);
+  assert.equal(hr.points[1].max, 84);          // extra envelope fields survive
+  assert.equal(hr.latest.v, 71);
+  const spo2 = out.metrics.find((m) => m.name === 'blood_oxygen_saturation');
+  assert.equal(spo2.latest.v, 0.97);           // fractions stay fractions, same as the daily cache
+});
+
+test('intraday: metric filter hits and misses honestly', async () => {
+  const hit = await store.getIntraday({ metric: 'heart_rate' });
+  assert.equal(hit.metrics.length, 1);
+  assert.equal(hit.metrics[0].name, 'heart_rate');
+  const miss = await store.getIntraday({ metric: 'step_count' });
+  assert.equal(miss.available, true);
+  assert.equal(miss.found, false);
+  assert.match(miss.note, /heart_rate/);       // says what IS present
+});
+
+test('intraday: status reports the window presence additively', async () => {
+  const s = await store.status();
+  assert.equal(s.intraday.present, true);
+  assert.ok(s.intraday.lastWrite);
+  fs.rmSync(path.join(DIR, 'health-intraday.json'));
+  const s2 = await store.status();
+  assert.equal(s2.intraday.present, false);
+});
+
+test('intraday: a corrupt file degrades to available:false, not a crash', async () => {
+  fs.writeFileSync(path.join(DIR, 'health-intraday.json'), '{not json');
+  const out = await store.getIntraday();
+  assert.equal(out.available, false);
+  fs.rmSync(path.join(DIR, 'health-intraday.json'));
+});
