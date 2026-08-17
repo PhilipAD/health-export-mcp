@@ -4,7 +4,7 @@
   "version": "1.3.0",
   "author": "Philip D'Souza",
   "authorUrl": "https://github.com/PhilipAD",
-  "category": "Health & Wellness",
+  "category": "health-wellness",
   "description": "Query 190 Apple Health metrics from any MCP agent — zero-dependency, read-only, local-first.",
   "tags": [
     "apple-health",
