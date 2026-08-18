@@ -23,7 +23,7 @@
   "homepage": "https://www.healthexport.dev",
   "repository": {
     "type": "git",
-    "url": "https://github.com/PhilipAD/health-export-mcp.git"
+    "url": "git+https://github.com/PhilipAD/health-export-mcp.git"
   },
   "bugs": {
     "url": "https://github.com/PhilipAD/health-export-mcp/issues"
