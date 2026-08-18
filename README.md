@@ -106,6 +106,8 @@ Restart the client and try:
 
 ## The 8 MCP tools
 
+Full reference with request/response examples: **[healthexport.dev/mcp](https://www.healthexport.dev/mcp/#tools)**.
+
 | Tool | What it does |
 |---|---|
 | `get_mcp_status` | Health check — source, metric/workout counts, latest data date. **Call first.** |
