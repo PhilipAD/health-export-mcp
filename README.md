@@ -2,9 +2,9 @@
 
 **Query your Apple Health data from Claude, ChatGPT, Cursor, OpenClaw, Hermes — and any other AI agent.**
 
-`health-export-mcp` is an open-source, **zero-dependency** [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that lets any MCP-compatible AI agent query your **Apple Health / HealthKit** data — **190 metrics** as clean JSON — in plain language. Local-first, read-only, no accounts, and no developer server in the path. It's the open-source server for the [Health Export AI](https://www.healthexport.dev) iOS app — **[available on the App Store](https://apps.apple.com/app/id6784185201)**.
+`health-export-mcp` is an open-source, **zero-dependency** [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that lets any MCP-compatible AI agent query your **Apple Health / HealthKit** data — **190 metrics** as clean JSON — in plain language. Local-first, read-only, no accounts, and no developer server in the path. It's the open-source server for the [MetricBridge](https://www.healthexport.dev) iOS app — **[available on the App Store](https://apps.apple.com/app/id6784185201)**.
 
-<p align="center"><a href="https://apps.apple.com/app/id6784185201"><img alt="Download Health Export AI on the App Store" src="https://img.shields.io/badge/Download_on_the-App_Store-0D96F6?style=for-the-badge&logo=apple&logoColor=white" height="38" /></a></p>
+<p align="center"><a href="https://apps.apple.com/app/id6784185201"><img alt="Download MetricBridge on the App Store" src="https://img.shields.io/badge/Download_on_the-App_Store-0D96F6?style=for-the-badge&logo=apple&logoColor=white" height="38" /></a></p>
 
 <p align="center">
   <a href="https://glama.ai/mcp/servers/PhilipAD/health-export-mcp"><img alt="Glama MCP Server" src="https://glama.ai/mcp/servers/PhilipAD/health-export-mcp/badges/score.svg" /></a>
@@ -44,7 +44,7 @@ It's an MCP server that turns your Apple Health export into a tool your AI agent
 
 ### 1. Get your Apple Health data flowing
 
-The companion iOS app **[Health Export AI](https://www.healthexport.dev)** exports your Apple Health data — read-only, automatic, private. For this MCP server, export to a destination it can read:
+The companion iOS app **[MetricBridge](https://www.healthexport.dev)** exports your Apple Health data — read-only, automatic, private. For this MCP server, export to a destination it can read:
 
 | Destination | Notes |
 |---|---|
@@ -182,14 +182,14 @@ node server.mjs --help
 ## The app that feeds it
 
 <p align="center">
-  <img src="assets/screenshot-dashboard.png" alt="Health Export AI dashboard" width="240" />
+  <img src="assets/screenshot-dashboard.png" alt="MetricBridge dashboard" width="240" />
   &nbsp;&nbsp;
   <img src="assets/screenshot-metrics.png" alt="190 Apple Health metrics" width="240" />
   &nbsp;&nbsp;
   <img src="assets/screenshot-destinations.png" alt="Export to iCloud, folder, LAN, or webhook" width="240" />
 </p>
 
-<p align="center"><sub><a href="https://www.healthexport.dev">Health Export AI</a> — exports your Apple Health to your agent, automatically.</sub></p>
+<p align="center"><sub><a href="https://www.healthexport.dev">MetricBridge</a> — exports your Apple Health to your agent, automatically.</sub></p>
 
 <p align="center"><a href="https://apps.apple.com/app/id6784185201"><b>Download on the App Store →</b></a></p>
 
@@ -225,7 +225,7 @@ The pinned, checksum-verified download above is the locked-down path. `npx healt
 ## Requirements
 
 - **Node.js ≥ 18** (`node -v`).
-- A folder containing a `.health-cache.json` exported by [Health Export AI](https://www.healthexport.dev) — or run `npm test` to generate a sample one.
+- A folder containing a `.health-cache.json` exported by [MetricBridge](https://www.healthexport.dev) — or run `npm test` to generate a sample one.
 - An MCP-compatible client (Claude Desktop, Cursor, opencode, OpenClaw, Hermes, VS Code) — or any tool that can read the webhook export.
 
 ---
@@ -233,7 +233,7 @@ The pinned, checksum-verified download above is the locked-down path. `npx healt
 ## FAQ
 
 **How do I get my Apple Health data into Claude / ChatGPT / my AI agent?**
-Install `health-export-mcp`, export your Apple Health data with the [Health Export AI](https://www.healthexport.dev) iOS app (to iCloud, a folder, or your LAN), then add the MCP server to your AI client. Your agent can then query your Apple Health metrics in natural language. (Non-MCP tools like ChatGPT read the app's webhook export instead.)
+Install `health-export-mcp`, export your Apple Health data with the [MetricBridge](https://www.healthexport.dev) iOS app (to iCloud, a folder, or your LAN), then add the MCP server to your AI client. Your agent can then query your Apple Health metrics in natural language. (Non-MCP tools like ChatGPT read the app's webhook export instead.)
 
 **Is my health data sent to a server?**
 Not to us. The MCP server runs locally and reads only the export files or endpoints you configure — there's no developer server in the path. Where your iOS export is delivered (iCloud, your LAN, a webhook) is entirely your choice.
@@ -273,7 +273,7 @@ stdio transport (newline-delimited JSON-RPC 2.0) — the universal MCP transport
 The iOS app reads Apple Health (read-only) and writes a compact `.health-cache.json` (plus optional context files) to the destination you choose. This server reads those files and exposes the 14 tools above over MCP. No bridge, no Docker, no database: just files and stdio.
 
 ```
-Apple Health → Health Export AI (iOS) → .health-cache.json → health-export-mcp → MCP client → you
+Apple Health → MetricBridge (iOS) → .health-cache.json → health-export-mcp → MCP client → you
 ```
 
 ---
@@ -292,7 +292,7 @@ Other Apple Health MCP servers in the ecosystem — worth a look depending on yo
 
 ## Related
 
-- **Companion iOS app:** [Health Export AI](https://www.healthexport.dev) — exports 190 Apple Health metrics to your agent, automatically.
+- **Companion iOS app:** [MetricBridge](https://www.healthexport.dev) — exports 190 Apple Health metrics to your agent, automatically.
 - **Model Context Protocol:** [modelcontextprotocol.io](https://modelcontextprotocol.io)
 - **Per-agent setup:** [AGENTS.md](AGENTS.md)
 

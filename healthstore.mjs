@@ -1,6 +1,6 @@
 // healthstore.mjs — reads the health data the iOS app exported to iCloud Drive.
 //
-// The Health Export AI iOS app writes the cache directly into its iCloud Drive
+// The MetricBridge iOS app writes the cache directly into its iCloud Drive
 // container; this server reads it locally. No receiver, no Docker, no HTTP bridge.
 //
 //   HEALTH_DATA_DIR=/path  → read <dir>/.health-cache.json (+ .health-workouts-cache.json)

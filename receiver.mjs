@@ -1,4 +1,4 @@
-// receiver.mjs — optional, ZERO-DEPENDENCY LAN push listener for Health Export AI.
+// receiver.mjs — optional, ZERO-DEPENDENCY LAN push listener for MetricBridge.
 //
 // Lets the iOS app push the health cache directly to this machine over the local network —
 // the "WebSocket" path marketed alongside MCP — when the user can't/doesn't use a synced folder.

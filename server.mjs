@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Health Export AI — MCP server (zero-dependency, stdio JSON-RPC 2.0).
+// MetricBridge — MCP server (zero-dependency, stdio JSON-RPC 2.0).
 //
 // Exposes your exported Apple Health data to any MCP-compatible agent
 // (Claude Desktop, OpenClaw, Hermes, Cursor, …). Local-first by default.
@@ -21,7 +21,7 @@ import * as ev from './events.mjs';
 import { PROMPTS } from './prompts.mjs';
 import { DEMO } from './demo.mjs';
 
-const SERVER = { name: 'health-export-ai', version: '1.4.1' };
+const SERVER = { name: 'health-export-ai', version: '1.4.2' };
 const DEFAULT_PROTOCOL = '2025-06-18';
 const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
 
@@ -376,7 +376,7 @@ const fmtBytes = (n) => n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : n >= 1
 
 function printHelp() {
   console.log(`health-export-mcp ${SERVER.version}
-Zero-dependency MCP server for Apple Health data exported by the Health Export AI iOS app.
+Zero-dependency MCP server for Apple Health data exported by the MetricBridge iOS app.
 
 Usage:
   node server.mjs                     run the MCP server on stdio (the default)

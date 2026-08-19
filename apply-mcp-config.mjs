@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// Health Export AI — safe, idempotent MCP config writer.
+// MetricBridge — safe, idempotent MCP config writer.
 //
 // Adds (or updates) ONE "health-export" server entry in the config file of a
 // given MCP client, preserving everything else. Backs up the file first, writes
