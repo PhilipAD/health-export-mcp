@@ -23,7 +23,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const MAX_BODY = 64 * 1024 * 1024;
@@ -232,7 +232,16 @@ function encodeTextFrame(str) {
   return Buffer.concat([header, payload]);
 }
 
-// Standalone run (also importable by server.mjs). pathToFileURL handles spaces in the path.
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+// Standalone run (also importable by server.mjs). Both sides are resolved to REAL paths: a bin
+// symlink (npx, npm i -g) otherwise makes this false and the receiver silently never starts.
+const isEntryPoint = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;
+  }
+})();
+if (isEntryPoint) {
   startReceiver();
 }

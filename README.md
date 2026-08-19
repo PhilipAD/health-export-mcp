@@ -31,6 +31,11 @@ It's an MCP server that turns your Apple Health export into a tool your AI agent
 - **What it isn't:** a cloud service. There's no developer server in the path — your data goes only where *you* point it.
 - **Setup:** point the server at your exported data and add it to your AI client.
 
+> **Just exported and the Mac has not seen it yet?** iCloud can take a few minutes to sync the
+> file across, so a check 60 seconds after tapping Run in the app can still show the old
+> timestamp. `get_mcp_status` reports `lastDataDate` and the intraday `lastWrite`, which is the
+> quickest way to tell "still syncing" from "never arrived".
+
 > **Try it with no iPhone needed:** `node server.mjs --demo` serves a deterministic synthetic dataset (400 days, workouts, events, sleep sessions) with every answer watermarked as synthetic. Or run `npm test` to write a sample cache and exercise every tool.
 
 ---

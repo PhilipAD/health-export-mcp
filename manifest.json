@@ -2,7 +2,7 @@
   "manifest_version": "0.3",
   "name": "health-export-ai",
   "display_name": "Health Export AI",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Query your Apple Health data, exported by the Health Export AI iOS app to iCloud Drive, from any MCP agent. Local-first, read-only, zero dependencies.",
   "long_description": "A zero-dependency MCP server that exposes 190 Apple Health metrics (exported by the Health Export AI iOS app into an iCloud Drive folder) to any MCP-compatible agent: Claude Desktop, opencode, Cursor, OpenClaw, Hermes. No bridge, no Docker, no HTTP receiver: the server reads the synced cache file directly over stdio. 14 tools: get_mcp_status, list_metrics, get_health_metrics, get_trends, compare_periods, get_structured_export, get_intraday, query_health_data, list_events, get_profile, get_workouts, get_sleep_sessions, get_cycle_context, correlate_metrics. Plus 22 MCP prompts and a --demo mode with a synthetic dataset. Get the companion iOS app on the App Store: https://apps.apple.com/app/id6784185201",
   "author": {

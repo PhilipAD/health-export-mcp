@@ -15,13 +15,13 @@
 // INSTEAD of the protocol loop, so their stdout is theirs to print to.
 
 import fs from 'node:fs';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath } from 'node:url';
 import * as store from './healthstore.mjs';
 import * as ev from './events.mjs';
 import { PROMPTS } from './prompts.mjs';
 import { DEMO } from './demo.mjs';
 
-const SERVER = { name: 'health-export-ai', version: '1.4.0' };
+const SERVER = { name: 'health-export-ai', version: '1.4.1' };
 const DEFAULT_PROTOCOL = '2025-06-18';
 const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
 
@@ -487,7 +487,20 @@ function serveStdio() {
 
 // Importable on purpose (tests read TOOLS/SERVER; a future embedder reads handle): the protocol
 // loop and the CLI run only when this file IS the entry point, mirroring receiver.mjs.
-const IS_MAIN = process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href;
+// `npx pkg` and `npm i -g pkg` BOTH invoke the bin through a SYMLINK, so process.argv[1] is the
+// link (…/node_modules/.bin/health-export-mcp) while import.meta.url is the real file. Comparing
+// the two directly made this false under npx: the protocol loop never started, the process exited
+// 0 with no stdout and no stderr, and an MCP client saw only "connection closed" ~700 ms in.
+// Reported 2026-08-19 by a user whose client failed four times in a row, working only when he
+// bypassed the shim with a direct `node …/server.mjs`. Resolve BOTH sides to real paths.
+const IS_MAIN = (() => {
+  if (!process.argv[1]) return false;
+  try {
+    return fs.realpathSync(process.argv[1]) === fs.realpathSync(fileURLToPath(import.meta.url));
+  } catch {
+    return false;          // argv[1] deleted mid-flight, or an unreadable path: not the entry point
+  }
+})();
 if (IS_MAIN) {
   const argv = process.argv.slice(2);
   if (argv.includes('--help') || argv.includes('-h')) {
