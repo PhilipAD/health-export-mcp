@@ -21,7 +21,7 @@ import * as ev from './events.mjs';
 import { PROMPTS } from './prompts.mjs';
 import { DEMO } from './demo.mjs';
 
-const SERVER = { name: 'health-export-ai', version: '1.4.2' };
+const SERVER = { name: 'health-export-ai', version: '1.4.3' };
 const DEFAULT_PROTOCOL = '2025-06-18';
 const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
 

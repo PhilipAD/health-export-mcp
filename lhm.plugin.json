@@ -1,11 +1,11 @@
 {
   "identifier": "philipad-health-export-mcp",
   "name": "health-export-mcp",
-  "version": "1.4.1",
+  "version": "1.4.3",
   "author": "Philip D'Souza",
   "authorUrl": "https://github.com/PhilipAD",
   "category": "health-wellness",
-  "description": "Query 190 Apple Health metrics from any MCP agent — zero-dependency, read-only, local-first.",
+  "description": "Query 190 Apple Health metrics from any MCP agent: zero-dependency, read-only, local-first.",
   "tags": [
     "apple-health",
     "healthkit",
@@ -71,7 +71,7 @@
     },
     {
       "name": "get_trends",
-      "description": "Compare the most recent N-day window against the prior N days for a metric — returns change, percent change and direction (up/down/flat).",
+      "description": "Compare the most recent N-day window against the prior N days for a metric, returns change, percent change and direction (up/down/flat).",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -91,7 +91,7 @@
     },
     {
       "name": "compare_periods",
-      "description": "Compare a metric between two arbitrary date periods (A vs B) — returns each aggregate plus the change and percent change.",
+      "description": "Compare a metric between two arbitrary date periods (A vs B), returns each aggregate plus the change and percent change.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -137,7 +137,7 @@
     },
     {
       "name": "get_structured_export",
-      "description": "Return clean structured JSON for the chosen metrics/date range — ideal to drop straight into an agent's context window.",
+      "description": "Return clean structured JSON for the chosen metrics/date range, ideal to drop straight into an agent's context window.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -161,7 +161,7 @@
     },
     {
       "name": "get_intraday",
-      "description": "The current hour-by-hour window from the iOS app's hourly automations (health-intraday.json, app 1.4+): hourly points plus latest value per metric. Replaced on every run — a live within-day view, not history.",
+      "description": "The current hour-by-hour window from the iOS app's hourly automations (health-intraday.json, app 1.4+): hourly points plus latest value per metric. Replaced on every run, a live within-day view, not history.",
       "inputSchema": {
         "type": "object",
         "properties": {

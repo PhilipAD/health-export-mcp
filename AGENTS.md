@@ -2,7 +2,7 @@
 
 Copy-paste setup for every supported agent. The server is a single Node script (`server.mjs`,
 zero dependencies). Point `HEALTH_DATA_DIR` at the folder that holds your exported
-`.health-cache.json` — by default the [MetricBridge](https://www.healthexport.dev) iOS app
+`.health-cache.json`, by default the [MetricBridge](https://www.healthexport.dev) iOS app
 ([App Store](https://apps.apple.com/app/id6784185201)) writes it to your iCloud Drive container:
 
 ```
@@ -67,7 +67,7 @@ Add the `health-export` block (same shape as Claude Desktop's `mcpServers` entry
 
 Add the `health-export` block to your Hermes agent's MCP servers config, then restart the daemon.
 
-## Non-MCP clients — ChatGPT · Gemini · Grok · n8n · Home Assistant
+## Non-MCP clients, ChatGPT · Gemini · Grok · n8n · Home Assistant
 
 These don't speak MCP, so they don't use this server. Instead, the [MetricBridge](https://www.healthexport.dev) app **POSTs your data to a webhook** (or your own endpoint) and your automation/agent reads that JSON. Every delivery is token-authenticated.
 
