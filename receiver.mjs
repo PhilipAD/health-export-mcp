@@ -100,7 +100,7 @@ export function startReceiver({
 } = {}) {
   // Fail closed: never expose an unauthenticated write endpoint on the network.
   if (!isLoopback(host) && !token) {
-    log(`REFUSING to listen on non-loopback ${host} without HEALTH_LISTEN_TOKEN — set the iOS pairing code as the token.`);
+    log(`REFUSING to listen on non-loopback ${host} without HEALTH_LISTEN_TOKEN: set the iOS pairing code as the token.`);
     return null;
   }
 
@@ -126,7 +126,7 @@ export function startReceiver({
   // Distinguish "wrong/blocked host" (403) from "bad token" (401) so the app can tell the user the real reason.
   const gate = (req) => {
     if (!hostOk(req)) return { ok: false, code: 403, msg: 'host not permitted' };
-    if (!tokenOk(req)) return { ok: false, code: 401, msg: 'unauthorized — check pairing secret' };
+    if (!tokenOk(req)) return { ok: false, code: 401, msg: 'unauthorized: check pairing secret' };
     return { ok: true, code: 200, msg: 'ok' };
   };
 
@@ -187,9 +187,9 @@ export function startReceiver({
   });
 
   server.on('error', (e) => {
-    if (e.code === 'EADDRINUSE') log(`PORT ${port} IN USE — stop the other process, or set HEALTH_LISTEN_PORT to a free port (e.g. ${port + 1}).`);
-    else if (e.code === 'EACCES') log(`PERMISSION DENIED binding ${host}:${port} — use a port >= 1024.`);
-    else if (e.code === 'EADDRNOTAVAIL') log(`ADDRESS ${host} NOT AVAILABLE here — use 0.0.0.0 or a local IP.`);
+    if (e.code === 'EADDRINUSE') log(`PORT ${port} IN USE: stop the other process, or set HEALTH_LISTEN_PORT to a free port (e.g. ${port + 1}).`);
+    else if (e.code === 'EACCES') log(`PERMISSION DENIED binding ${host}:${port}: use a port >= 1024.`);
+    else if (e.code === 'EADDRNOTAVAIL') log(`ADDRESS ${host} NOT AVAILABLE here: use 0.0.0.0 or a local IP.`);
     else log('server error', e.message);
   });
   server.listen(port, host, () => {

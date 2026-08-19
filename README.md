@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/architecture.svg" alt="Apple Health exports to iCloud, a folder, or your LAN; health-export-mcp reads it and serves 8 query tools to your AI agent" width="100%" />
+  <img src="assets/architecture.svg" alt="Apple Health exports to iCloud, a folder, or your LAN; health-export-mcp reads it and serves 14 query tools to your AI agent" width="100%" />
 </p>
 
 > Ask your agent: *"Compare my HRV this week vs last week and tell me if I'm recovering."* — it calls the tools and answers from your **actual numbers**.
@@ -31,7 +31,7 @@ It's an MCP server that turns your Apple Health export into a tool your AI agent
 - **What it isn't:** a cloud service. There's no developer server in the path — your data goes only where *you* point it.
 - **Setup:** point the server at your exported data and add it to your AI client.
 
-> **Try it with no iPhone needed:** `git clone https://github.com/PhilipAD/health-export-mcp.git && cd health-export-mcp && npm test` writes a 14-day sample cache and exercises every tool.
+> **Try it with no iPhone needed:** `node server.mjs --demo` serves a deterministic synthetic dataset (400 days, workouts, events, sleep sessions) with every answer watermarked as synthetic. Or run `npm test` to write a sample cache and exercise every tool.
 
 ---
 
@@ -104,22 +104,51 @@ Restart the client and try:
 
 ---
 
-## The 8 MCP tools
+## The 14 MCP tools
 
 Full reference with request/response examples: **[healthexport.dev/mcp](https://www.healthexport.dev/mcp/#tools)**.
 
 | Tool | What it does |
 |---|---|
-| `get_mcp_status` | Health check — source, metric/workout counts, latest data date. **Call first.** |
+| `get_mcp_status` | Health check: source, metric/workout counts, which context files exist, latest data date. **Call first.** |
 | `list_metrics` | Every available metric with unit, day count, and date range. |
-| `get_health_metrics` | Daily values for a metric (or all) over a date range + an aggregate (avg/sum/min/max/latest). |
-| `get_trends` | Recent N-day window vs the prior N days — change, % change, direction. |
-| `compare_periods` | A metric across two arbitrary date periods (A vs B). |
-| `get_structured_export` | Clean JSON for chosen metrics/range — drop straight into context. |
-| `get_intraday` | Today's hour-by-hour window from the app's hourly automations (`health-intraday.json`, app 1.4+) — replaced each run, latest value per metric. |
-| `query_health_data` | Natural-language convenience: *"average HRV last month"* → routed structured results. |
+| `get_health_metrics` | Daily values for a metric (or all) over a date range + an aggregate (avg/sum/min/max/latest). Supports `filterDays` (restrict to days covered by logged events, with `negate`). |
+| `get_trends` | Recent N-day window vs the prior N days: change, % change, direction. Supports `excludeTravelDays`. |
+| `compare_periods` | A metric across two arbitrary date periods (A vs B), or around a logged event via `anchor: {eventId, days}` (the event day excluded from both sides). |
+| `get_structured_export` | Clean JSON for chosen metrics/range, paginated with a cursor. |
+| `get_intraday` | Today's hour-by-hour window from the app's hourly automations (`health-intraday.json`, app 1.4+), replaced each run. |
+| `query_health_data` | Natural-language convenience: *"average HRV last month"* routed to structured results. |
+| `list_events` | Logged context events (medication, habit, visit, life, shift, episode, travel) with type/tag/date filters. |
+| `get_profile` | Opted-in context fields (conditions, medications, goals, allergies, notes) plus `presentFields`. Absent fields were withheld, never "none". |
+| `get_workouts` | Workouts by activity/date with pagination; includes heart rate, running dynamics, cycling power, intervals and `hasRoute` when exported. |
+| `get_sleep_sessions` | Clustered sleep sessions attributed to the waking day; split nights returned as-is. |
+| `get_cycle_context` | Day-in-cycle and coarse phase derived from logged period starts. Never predictive. |
+| `correlate_metrics` | Pearson correlation between two metrics with a 0..3 day lag. Association, not causation, always stated. |
 
-**Coverage:** 190 Apple Health metrics across activity, heart, HRV, mobility, respiratory, body, sleep, hearing, and nutrition — plus workouts.
+**Coverage:** 190 Apple Health metrics across activity, heart, HRV, mobility, respiratory, body, sleep, hearing, and nutrition, plus workouts. Data answers carry honest `coverage` blocks, and single-metric answers list logged events inside the window as `segmentBoundaries` so an average across a medication start or life change cannot masquerade as one regime.
+
+### Data files
+
+The daily cache (`.health-cache.json`) and workouts cache are joined by optional context files, all read-only and all optional: `health-events.json` (the logging surface), `health-profile.json` (opt-in context), `health-sessions.json` (sleep sessions), `health-cycles.json` (observed cycle starts), `health-days.json` (timezone change log). An absent file is reported as `available:false` with a note, never as "no data". Formats: [docs/SCHEMA-CONTRACTS.md](docs/SCHEMA-CONTRACTS.md).
+
+Two patterns worth knowing: [query a parent's Apple Health from your own AI](docs/caregiver-setup.md) (consent-first, the parent's phone is the authority) and [logging data into Apple Health via Shortcuts](docs/shortcuts-write-bridge.md) (the server and app stay strictly read-only).
+
+### MCP prompts
+
+The server ships 22 prompts over `prompts/list` / `prompts/get`: daily brief, weekly review, doctor visit prep, what changed since my last visit, sleep quality and regularity, HRV trend, training and race week reviews, zone minutes, n-of-1 experiment, medication before/after, GLP-1 dose-step compare, sobriety milestone, shift block compare, travel-honest monthly review, cycle-aware trend read, caregiver check-in, glucose day summary, long-term activity narrative, data coverage audit, and a profile-aware context bootstrap. Every prompt leads with coverage honesty and never turns data into diagnosis.
+
+### Demo mode
+
+`node server.mjs --demo` (or `HEALTH_DEMO=1`) serves a deterministic synthetic dataset: ~15 metrics over 400 days, 30 workouts with intervals, 8 events, a profile, 60 sleep sessions, cycle starts and a timezone change, anchored to a fixed date with a seeded PRNG. Every answer carries `demo: true` and a `[SYNTHETIC DEMO DATA]` text prefix, so demo output can never pass for a real export.
+
+### CLI
+
+```bash
+node server.mjs --doctor            # diagnostics: files, sizes, schema, freshness, pairing
+node server.mjs status --max-age 24 # exit 0 if data is fresh, 1 if stale (cron gate)
+node server.mjs receive             # standalone LAN receiver (binds 127.0.0.1 by default)
+node server.mjs --help
+```
 
 ---
 
@@ -236,7 +265,7 @@ stdio transport (newline-delimited JSON-RPC 2.0) — the universal MCP transport
 
 ## How it works
 
-The iOS app reads Apple Health (read-only) and writes a compact `.health-cache.json` to the destination you choose. This server reads that file and exposes the 8 tools above over MCP. No bridge, no Docker, no database — just a file and stdio.
+The iOS app reads Apple Health (read-only) and writes a compact `.health-cache.json` (plus optional context files) to the destination you choose. This server reads those files and exposes the 14 tools above over MCP. No bridge, no Docker, no database: just files and stdio.
 
 ```
 Apple Health → Health Export AI (iOS) → .health-cache.json → health-export-mcp → MCP client → you

@@ -20,12 +20,23 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import os from 'node:os';
+// Sibling modules: demo.mjs is the deterministic synthetic dataset behind --demo; events.mjs reads
+// the optional context files (events, profile, sessions, cycles, days). events.mjs imports helpers
+// back from this file; the cycle is safe because both sides touch the other's bindings only inside
+// functions, never at module-evaluation time.
+import { DEMO, demoData } from './demo.mjs';
+import * as ev from './events.mjs';
 
 // Expand a leading ~ (Node, unlike the shell, does not) so manual configs resolve correctly.
 const RAW_DIR = process.env.HEALTH_DATA_DIR || '.';
 const DATA_DIR = (RAW_DIR === '~' || RAW_DIR.startsWith('~/'))
   ? path.join(os.homedir(), RAW_DIR.slice(1))
   : RAW_DIR;
+
+/** Resolve a data file inside the configured dir. Exported so events.mjs and the CLI (doctor,
+ *  status) resolve against the SAME directory this module captured at import time; re-deriving it
+ *  elsewhere would silently diverge the moment tilde expansion or env handling changed here. */
+export const dataPath = (file) => path.join(DATA_DIR, file);
 
 // Guard against reading something pathological, but sized for a real full-history cache.
 // Measured on this cache's exact shape (189 metrics x 3,653 days): 22.0 MB compact. The old
@@ -57,6 +68,9 @@ function readJSON(file, fallback) {
 // hash (sha256) to the stored value before any data is served. No pair file ⇒ open (the data is
 // already local-only). So a copied bundle / another iCloud user can't read without the secret.
 export function pairing() {
+  // Demo mode serves synthetic data only; there is nothing real to protect, and a stray
+  // .health-pair.json in the cwd must not lock a dataset it does not own.
+  if (DEMO) return { required: false, ok: true };
   const pair = readJSON(path.join(DATA_DIR, '.health-pair.json'), null);
   if (!pair || !pair.hash) return { required: false, ok: true };
   const secret = process.env.PAIRING_SECRET || '';
@@ -69,8 +83,10 @@ export function pairing() {
 }
 
 // Throw a clear "locked" error from the data tools when pairing is required but not satisfied,
-// so an agent sees the real reason instead of a misleading "unknown metric".
-function assertUnlocked() {
+// so an agent sees the real reason instead of a misleading "unknown metric". Exported: the
+// events/profile/sessions/cycles readers in events.mjs sit behind the SAME gate, because those
+// files carry exactly the context (medication, cycles) the gate exists to protect.
+export function assertUnlocked() {
   const p = pairing();
   if (p.required && !p.ok) throw new Error('Locked: set PAIRING_SECRET to the code shown in the iOS app (Settings → Agent pairing).');
 }
@@ -81,7 +97,7 @@ function assertUnlocked() {
 // actually rewritten the file — which is exactly the signal we want, since the app writes
 // atomically via a rename.
 const _memo = new Map();
-function readJSONCached(file, fallback) {
+export function readJSONCached(file, fallback) {
   let st;
   try { st = fs.statSync(file); } catch { _memo.delete(file); return fallback; }
   const stamp = `${st.mtimeMs}:${st.size}`;
@@ -99,15 +115,17 @@ export const SUPPORTED_SCHEMA = 1;
 
 export async function loadMetrics() {
   if (!pairing().ok) return {};
-  const raw = readJSONCached(path.join(DATA_DIR, '.health-cache.json'), {});
+  // Demo mode: the synthetic dataset takes the place of the file entirely. Nothing on disk is
+  // read, so demo can never leak, mix in, or mask a real export.
+  const raw = DEMO ? demoData().metrics : readJSONCached(path.join(DATA_DIR, '.health-cache.json'), {});
   const meta = raw._meta;
   if (meta && Number(meta.schema) > SUPPORTED_SCHEMA) {
     throw new Error(
       `This health cache was written by Health Export ${meta.app ?? 'a newer version'} using ` +
       `cache schema ${meta.schema}, but this MCP server only understands ${SUPPORTED_SCHEMA}. ` +
-      // The package `@healthexport/mcp` does not exist — package.json is `private: true`.
-      // These are the two channels the site and SKILL.md actually document.
-      `Update the Health Export MCP server — reinstall the bundle from https://www.healthexport.dev/health-export.mcpb, or re-download https://www.healthexport.dev/mcp/healthstore.mjs — reading it anyway ` +
+      // These are the two channels the site and SKILL.md actually document. (npm publishes
+      // health-export-mcp too, but the pinned artifacts below are the checksum-verified path.)
+      `Update the Health Export MCP server: reinstall the bundle from https://www.healthexport.dev/health-export.mcpb, or re-download https://www.healthexport.dev/mcp/healthstore.mjs. Reading it anyway ` +
       `could report wrong numbers.`);
   }
   // NULL PROTOTYPE. Every existence check here is `metrics[name]`, so inherited keys answered for
@@ -133,10 +151,12 @@ let viewCache = { raw: null, view: Object.create(null) };
 
 export async function loadWorkouts() {
   if (!pairing().ok) return [];
+  if (DEMO) return demoData().workouts;
   return readJSONCached(path.join(DATA_DIR, '.health-workouts-cache.json'), []);
 }
 
 export function sourceLabel() {
+  if (DEMO) return 'SYNTHETIC DEMO DATASET (--demo): no file is read, every value is generated';
   return `file ${path.resolve(DATA_DIR, '.health-cache.json')}`;
 }
 
@@ -147,7 +167,7 @@ const inRange = (d, start, end) => (!start || d >= start) && (!end || d <= end);
 // "2026-8-1" or "last tuesday" silently matched nothing and the tool returned an empty series with
 // isError:false -- an agent could not tell "no data" from "you typed the date wrong".
 const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
-function assertDay(v, label) {
+export function assertDay(v, label) {
   if (v === undefined || v === null || v === '') return undefined;
   if (typeof v !== 'string' || !DAY_RE.test(v)) {
     throw new Error(`${label} must be YYYY-MM-DD (got ${JSON.stringify(v)})`);
@@ -272,6 +292,13 @@ export async function status() {
   return {
     ok: names.length > 0 && p.ok,
     source: sourceLabel(),
+    // Demo mode is reported LOUDLY and first-class here, not only in the per-answer watermark:
+    // get_mcp_status is the tool agents are told to call first, so this is where a human debugging
+    // "why do my numbers look wrong" finds out they are not their numbers at all.
+    ...(DEMO && {
+      demo: true,
+      demoNote: 'SYNTHETIC DEMO DATA: this server is running with --demo (or HEALTH_DEMO=1). Every value is generated from a fixed seed; nothing comes from a real export. Restart without the flag to read real data.',
+    }),
     paired: p.required,
     locked: p.required && !p.ok,
     note: (p.required && !p.ok)
@@ -286,8 +313,23 @@ export async function status() {
       return st ? { present: true, lastWrite: new Date(st.mtimeMs).toISOString() }
                 : { present: false };
     })(),
+    // Additive presence flags for the optional context files, so an agent knows which of the
+    // context tools can answer before calling them. Absence means "not exported", never "none".
+    contextFiles: DEMO
+      ? { events: true, profile: true, sessions: true, cycles: true, days: true }
+      : {
+          events: !!ev.loadEventsFile(),
+          profile: fileExists('health-profile.json'),
+          sessions: fileExists('health-sessions.json'),
+          cycles: fileExists('health-cycles.json'),
+          days: !!ev.loadDaysFile(),
+        },
     metrics: names.sort(),
   };
+}
+
+function fileExists(name) {
+  try { return fs.statSync(path.join(DATA_DIR, name)).isFile(); } catch { return false; }
 }
 
 // ---- Intraday (hourly) ----------------------------------------------------
@@ -306,13 +348,19 @@ function intradayStat() {
 
 export async function getIntraday({ metric } = {}) {
   assertUnlocked();
+  if (DEMO) {
+    return {
+      available: false,
+      note: 'The synthetic demo dataset has no intraday window: the hourly file is a live surface that only a real device produces. Every daily tool works in demo mode.',
+    };
+  }
   const st = intradayStat();
   const env = readJSON(path.join(DATA_DIR, INTRADAY_FILE), null);
   const rows = env?.data?.metrics;
   if (!st || !Array.isArray(rows) || rows.length === 0) {
     return {
       available: false,
-      note: 'No intraday window yet. It appears when the iOS app (1.4 or later) runs an HOURLY automation — for example "Vitals (Intraday)" on the Schedule tab — with iCloud or a folder destination on. Daily data is unaffected: use get_health_metrics and the other tools for that.',
+      note: 'No intraday window yet. It appears when the iOS app (1.4 or later) runs an HOURLY automation, for example "Vitals (Intraday)" on the Schedule tab, with iCloud or a folder destination on. Daily data is unaffected: use get_health_metrics and the other tools for that.',
     };
   }
   let metrics = rows
@@ -338,7 +386,7 @@ export async function getIntraday({ metric } = {}) {
         available: true,
         metric,
         found: false,
-        note: `"${metric}" is not in the current intraday window — the window only holds what the hourly automation exports. Present: ${metrics.map((m) => m.name).join(', ') || 'none'}.`,
+        note: `"${metric}" is not in the current intraday window: the window only holds what the hourly automation exports. Present: ${metrics.map((m) => m.name).join(', ') || 'none'}.`,
       };
     }
     metrics = hit;
@@ -371,7 +419,7 @@ export async function listMetrics() {
 
 const AGGREGATIONS = new Set(['sum', 'avg', 'min', 'max', 'latest']);
 
-export async function getHealthMetrics({ metric, start, end, aggregation, granularity, limit } = {}) {
+export async function getHealthMetrics({ metric, start, end, aggregation, granularity, limit, filterDays, _excludeDays } = {}) {
   assertUnlocked();
   // The tool schema declares an enum and nothing enforced it, so `aggregation:"median"` fell through
   // to the default branch, returned the MEAN, and echoed "median" back — a wrong number wearing a
@@ -383,6 +431,24 @@ export async function getHealthMetrics({ metric, start, end, aggregation, granul
   end = assertDay(end, 'end');
   if (start && end && start > end) throw new Error(`start (${start}) is after end (${end})`);
   const cap = Math.min(Number(limit) > 0 ? Number(limit) : DEFAULT_LIMIT, MAX_LIMIT);
+
+  // filterDays restricts every metric to the days covered by matching logged events (endDate
+  // ranges inclusive, point events their single day); negate inverts to the days NOT covered.
+  // An absent events file is an ERROR here, not an empty match: silently matching zero days would
+  // read exactly like "no data on shift days", which is the misreading this whole file family
+  // exists to prevent.
+  let filterSet = null;
+  let filterNegate = false;
+  if (filterDays != null) {
+    if (typeof filterDays !== 'object' || Array.isArray(filterDays)) {
+      throw new Error('filterDays must be an object: {eventType?, eventTag?, negate?}');
+    }
+    filterNegate = !!filterDays.negate;
+    filterSet = ev.matchingEventDaySet({ eventType: filterDays.eventType, eventTag: filterDays.eventTag });
+    if (filterSet === null) {
+      throw new Error('filterDays needs health-events.json, which is not present in the data dir. Log events in the iOS app (1.5 or later) and export, or drop filterDays.');
+    }
+  }
 
   const metrics = await loadMetrics();
   const names = metric ? [metric] : Object.keys(metrics);
@@ -400,10 +466,22 @@ export async function getHealthMetrics({ metric, start, end, aggregation, granul
     const m = metrics[name];
     if (!m) continue;
     const all = m.daily || [];
-    const points = all.filter((p) => inRange(p.d, start, end));
+    let points = all.filter((p) => inRange(p.d, start, end));
+    if (filterSet) {
+      // XOR keeps the two branches one expression: in the set when negate is false, out of it when
+      // negate is true. The unfiltered count is reported alongside so a shrunken series is visible.
+      points = points.filter((p) => filterSet.has(p.d) !== filterNegate);
+    }
+    let excludedDays = 0;
+    if (_excludeDays) {
+      const before = points.length;
+      points = points.filter((p) => !_excludeDays.has(p.d));
+      excludedDays = before - points.length;
+    }
     const gran = resolveGranularity(points.length, granularity, perMetric);
     const rolled = rollUp(points, gran, !!m.cumulative);
     out[name] = {
+      ...(_excludeDays && { excludedDays }),
       unit: m.unit || '',
       cumulative: !!m.cumulative,
       granularity: gran,
@@ -424,10 +502,38 @@ export async function getHealthMetrics({ metric, start, end, aggregation, granul
       out[name].note = `${points.length} daily values rolled up to ${gran}. Narrow start/end, or pass granularity:"day" with a smaller range, for day-level detail.`;
     }
   }
+
+  // Segment honesty (contract section 8), single-metric calls only: when point events sit inside
+  // the analyzed window, say so IN the answer. An average across a boundary can be a number that
+  // was true on no actual day, and nothing about the mean itself reveals that.
+  if (metric && out[metric]) {
+    const daily = metrics[metric].daily || [];
+    const winStart = start || daily[0]?.d;
+    const winEnd = end || daily[daily.length - 1]?.d;
+    const bounds = ev.boundariesIn(winStart, winEnd);
+    if (bounds && bounds.length) {
+      out[metric].segmentBoundaries = bounds;
+      out[metric].segmentNote = ev.SEGMENT_NOTE(bounds.length);
+    }
+  }
+
+  // How many days the event filter actually matched is part of the answer: "0 recorded points on
+  // shift days" and "there were no shift days" are different findings.
+  if (filterSet) {
+    out.filterDays = {
+      ...(filterDays.eventType && { eventType: filterDays.eventType }),
+      ...(filterDays.eventTag && { eventTag: filterDays.eventTag }),
+      negate: filterNegate,
+      matchedEventDays: filterSet.size,
+      note: filterNegate
+        ? `Matching events cover ${filterSet.size} day(s); negate:true keeps only days OUTSIDE that set. Each metric's pointsInRange counts recorded days after the filter.`
+        : `Matching events cover ${filterSet.size} day(s); only those days are included. Each metric's pointsInRange counts recorded days after the filter.`,
+    };
+  }
   return out;
 }
 
-export async function getTrends({ metric, window = 7 } = {}) {
+export async function getTrends({ metric, window = 7, excludeTravelDays } = {}) {
   if (!metric) throw new Error('metric is required');
   assertUnlocked();
   // Floor FIRST, then validate. `window: 0.5` passed `> 0` and floored to 0, producing an empty
@@ -439,7 +545,21 @@ export async function getTrends({ metric, window = 7 } = {}) {
   const metrics = await loadMetrics();
   const m = metrics[metric];
   if (!m) throw new Error(`unknown metric "${metric}"`);
-  const daily = (m.daily || []).slice();
+  let daily = (m.daily || []).slice();
+  // excludeTravelDays drops the days a timezone change landed on (health-days.json): those days
+  // were not 24 hours long, so their totals are shortened or stretched by the clock itself, not by
+  // the person. Dropped BEFORE windowing so the anchor day cannot itself be a travel day. An
+  // absent log is reported, not treated as "no travel": the file only exists on app 1.5+.
+  let travel = null, travelUnavailableNote = null;
+  const preTravel = daily;
+  if (excludeTravelDays) {
+    travel = ev.travelDaySet();
+    if (travel === null) {
+      travelUnavailableNote = 'excludeTravelDays was requested but health-days.json is not present, so no timezone change log exists and no days were excluded. The log is written by iOS app 1.5 or later.';
+    } else {
+      daily = daily.filter((p) => !travel.has(p.d));
+    }
+  }
   // Windows are CALENDAR days, not "the last N recorded points". Slicing by count meant a 7-day
   // window on a sparse metric — body mass, VO2 max, anything logged weekly — silently spanned two
   // months, and the comparison was then between two arbitrary and unequal stretches of time
@@ -475,7 +595,26 @@ export async function getTrends({ metric, window = 7 } = {}) {
   const rRate = rate(recent), pRate = rate(prior);
   const changePct = (rRate != null && pRate != null && pRate !== 0)
     ? round(((rRate - pRate) / Math.abs(pRate)) * 100) : null;
+  // Travel days actually dropped INSIDE the compared span. Counting drops across the whole
+  // history would report exclusions that never touched this comparison.
+  const travelDropped = travel && Number.isFinite(anchor)
+    ? preTravel.filter((p2) => travel.has(p2.d) && inSpan(p2, priorFrom, anchor)).length
+    : 0;
+  // Segment honesty: point events inside the compared span. A trend across a medication start is
+  // two regimes averaged into one slope.
+  const spanStart = Number.isFinite(anchor) ? new Date(priorFrom).toISOString().slice(0, 10) : null;
+  const spanEnd = daily.length ? daily[daily.length - 1].d : null;
+  const bounds = spanStart && spanEnd ? ev.boundariesIn(spanStart, spanEnd) : null;
   return {
+    ...(bounds && bounds.length && {
+      segmentBoundaries: bounds,
+      segmentNote: ev.SEGMENT_NOTE(bounds.length),
+    }),
+    ...(excludeTravelDays && {
+      travelDaysExcluded: travelUnavailableNote ? 0 : travelDropped,
+      travelNote: travelUnavailableNote
+        ?? `${travelDropped} recorded day(s) inside the compared windows were dropped because a timezone change landed on them (those days were not 24 hours long), per health-days.json.`,
+    }),
     metric, unit: m.unit || '', window,
     recent: r, prior: p,
     // Point counts are part of the answer: without them a caller cannot tell a real change from an
@@ -506,8 +645,38 @@ export async function getTrends({ metric, window = 7 } = {}) {
   };
 }
 
-export async function comparePeriods({ metric, periodA, periodB } = {}) {
-  if (!metric || !periodA || !periodB) throw new Error('metric, periodA {start,end}, periodB {start,end} required');
+export async function comparePeriods({ metric, periodA, periodB, anchor, excludeTravelDays } = {}) {
+  if (!metric) throw new Error('metric is required');
+  assertUnlocked();   // before anchor resolution: the events file is behind the same gate
+  // anchor derives BOTH periods from a logged event: [date-days, date-1] vs [date+1, date+days],
+  // the event day itself excluded from both sides (it belongs to neither regime; on a medication
+  // start day the person lived under both). Passing explicit periods AND an anchor is a
+  // contradiction we refuse rather than silently picking a winner.
+  let anchorInfo = null;
+  if (anchor != null) {
+    if (periodA || periodB) throw new Error('pass either periodA/periodB or anchor {eventId, days}, not both: anchor derives both periods from the event date.');
+    if (typeof anchor !== 'object' || !anchor.eventId) throw new Error('anchor must be {eventId, days}. Get event ids from list_events.');
+    const days = Math.floor(Number(anchor.days));
+    if (!Number.isFinite(days) || days < 1) {
+      throw new Error(`anchor.days must be a whole number of days, at least 1 (got ${JSON.stringify(anchor.days)})`);
+    }
+    const found = ev.findEvent(String(anchor.eventId));
+    if (!found.available) {
+      throw new Error('anchor needs health-events.json, which is not present in the data dir. Log events in the iOS app (1.5 or later) and export first.');
+    }
+    if (!found.event) {
+      throw new Error(`unknown eventId "${anchor.eventId}". Use list_events to see logged events and their ids.`);
+    }
+    const e = found.event;
+    periodA = { start: ev.addDays(e.date, -days), end: ev.addDays(e.date, -1) };
+    periodB = { start: ev.addDays(e.date, 1), end: ev.addDays(e.date, days) };
+    anchorInfo = {
+      eventId: e.id, date: e.date, ...(e.endDate && { endDate: e.endDate }),
+      type: e.type ?? null, title: e.title ?? null, days,
+      note: `periodA is the ${days} day(s) before the event, periodB the ${days} day(s) after. The event day itself (${e.date}) is excluded from both sides.`,
+    };
+  }
+  if (!periodA || !periodB) throw new Error('metric plus either periodA {start,end} and periodB {start,end}, or anchor {eventId, days}, required');
   // Both bounds of both periods, explicitly. The old guard checked only truthiness, so `{}` or a
   // bare "2026-01" passed, start/end came out undefined, `inRange` then matched the ENTIRE history
   // for both sides, and the tool returned change: 0, changePercent: 0 with isError:false — an
@@ -517,8 +686,19 @@ export async function comparePeriods({ metric, periodA, periodB } = {}) {
       throw new Error(`${label} must be an object with both start and end as YYYY-MM-DD dates`);
     }
   }
-  const a = await getHealthMetrics({ metric, start: periodA.start, end: periodA.end });
-  const b = await getHealthMetrics({ metric, start: periodB.start, end: periodB.end });
+  // Same travel-day rule as get_trends: drop the days a timezone change landed on, and say how
+  // many were dropped from EACH side, because an exclusion that hit only one period is itself a
+  // finding the caller needs to see.
+  let travel = null, travelUnavailableNote = null;
+  if (excludeTravelDays) {
+    travel = ev.travelDaySet();
+    if (travel === null) {
+      travelUnavailableNote = 'excludeTravelDays was requested but health-days.json is not present, so no timezone change log exists and no days were excluded. The log is written by iOS app 1.5 or later.';
+    }
+  }
+  const exOpt = travel ? { _excludeDays: travel } : {};
+  const a = await getHealthMetrics({ metric, start: periodA.start, end: periodA.end, ...exOpt });
+  const b = await getHealthMetrics({ metric, start: periodB.start, end: periodB.end, ...exOpt });
   const av = a[metric]?.aggregate, bv = b[metric]?.aggregate;
   const na = a[metric]?.pointsInRange ?? 0, nb = b[metric]?.pointsInRange ?? 0;
   // Span lengths ride along: comparing a 31-day month against a 28-day one is a legitimate thing to
@@ -534,8 +714,26 @@ export async function comparePeriods({ metric, periodA, periodB } = {}) {
   const rate = (v, n) => (v == null || n === 0) ? null : (cumulative ? v / n : v);
   const ra = rate(av, na), rb = rate(bv, nb);
   const changePct = (ra != null && rb != null && rb !== 0) ? round(((ra - rb) / Math.abs(rb)) * 100) : null;
+  // Segment honesty across BOTH periods, deduplicated: a boundary inside either side means at
+  // least one of the two aggregates mixes regimes. When the periods came from an anchor the
+  // anchoring event itself can never appear here (its day is excluded from both sides).
+  const seen = new Set();
+  const bounds = [...(ev.boundariesIn(periodA.start, periodA.end) || []), ...(ev.boundariesIn(periodB.start, periodB.end) || [])]
+    .filter((x) => { const k = `${x.date}|${x.type}|${x.title}`; if (seen.has(k)) return false; seen.add(k); return true; })
+    .sort((x, y) => x.date.localeCompare(y.date));
+  const travelA = a[metric]?.excludedDays ?? 0, travelB = b[metric]?.excludedDays ?? 0;
   return {
     metric, unit: a[metric]?.unit || '',
+    ...(anchorInfo && { anchor: anchorInfo }),
+    ...(bounds.length && {
+      segmentBoundaries: bounds,
+      segmentNote: ev.SEGMENT_NOTE(bounds.length),
+    }),
+    ...(excludeTravelDays && {
+      travelDaysExcluded: { periodA: travelA, periodB: travelB },
+      travelNote: travelUnavailableNote
+        ?? `Days on which a timezone change landed (not 24 hours long, per health-days.json) were dropped: ${travelA} from periodA, ${travelB} from periodB.`,
+    }),
     // When coverage is UNEQUAL the reported value is the per-day rate, not the total — matching
     // `AskEngine.comparePeriods`, which switches to a daily average for exactly this case and says
     // so in its label. Reporting one side's total against the other's is the arithmetic that made a
@@ -642,6 +840,138 @@ export async function getStructuredExport({ metrics: names, start, end, granular
     note: nextCursor
       ? `Returned ${Object.keys(data).length} of ${pick.length} metrics. Call again with cursor:"${nextCursor}" for the next page.`
       : undefined,
+  };
+}
+
+// ---- Workouts query --------------------------------------------------------
+const WORKOUTS_FILE = '.health-workouts-cache.json';
+const WORKOUTS_DEFAULT_LIMIT = 50;
+const WORKOUTS_MAX_LIMIT = 200;
+
+// Sort key and cursor: (start instant, id). The id rides along because two workouts can share a
+// start (paused-and-resumed sessions export that way), and a cursor that is only a timestamp
+// would re-serve or skip one of the pair depending on tie order. Same successor-search contract
+// as get_structured_export: the cursor stays valid across a cache rewrite, and a cursor past the
+// end yields an empty final page instead of a silent restart from page one.
+const workoutKey = (w) => `${String(w.start ?? '')}#${String(w.id ?? '')}`;
+
+export async function getWorkouts({ activityType, start, end, limit, cursor } = {}) {
+  assertUnlocked();
+  start = assertDay(start, 'start');
+  end = assertDay(end, 'end');
+  if (start && end && start > end) throw new Error(`start (${start}) is after end (${end})`);
+  if (!DEMO && !fileExists(WORKOUTS_FILE)) {
+    return {
+      available: false,
+      note: `No ${WORKOUTS_FILE} found beside the daily cache. It appears once the iOS app exports workouts. Absence means workouts were not exported, not that none happened.`,
+    };
+  }
+  const rows = (await loadWorkouts()).filter((w) => w && typeof w === 'object');
+  let filtered = rows;
+  if (activityType != null && activityType !== '') {
+    const q = String(activityType).trim();
+    const asNum = Number(q);
+    // Name or raw HealthKit id: "Running" and 37 select the same workouts. Matching the stored
+    // strings case-insensitively means the caller does not have to know which form the cache used.
+    filtered = filtered.filter((w) => Number.isFinite(asNum) && q !== ''
+      ? Number(w.activityType) === asNum
+      : (String(w.name ?? '').toLowerCase() === q.toLowerCase() || String(w.activityType ?? '').toLowerCase() === q.toLowerCase()));
+  }
+  // The workout's local calendar day is the first 10 chars of its ISO start (which carries the
+  // local UTC offset), the same day bucketing every other surface uses.
+  if (start) filtered = filtered.filter((w) => String(w.start ?? '').slice(0, 10) >= start);
+  if (end) filtered = filtered.filter((w) => String(w.start ?? '').slice(0, 10) <= end);
+
+  const sorted = [...filtered].sort((x, y) => {
+    const tx = Date.parse(x.start) || 0, ty = Date.parse(y.start) || 0;
+    return tx - ty || String(x.id ?? '').localeCompare(String(y.id ?? ''));
+  });
+
+  const cap = Math.min(Math.max(1, Math.floor(Number(limit) > 0 ? Number(limit) : WORKOUTS_DEFAULT_LIMIT)), WORKOUTS_MAX_LIMIT);
+  let startIdx = 0;
+  if (cursor) {
+    const c = String(cursor);
+    const found = sorted.findIndex((w) => workoutKey(w) >= c);
+    startIdx = found < 0 ? sorted.length : found;
+  }
+  const page = sorted.slice(startIdx, startIdx + cap);
+  const nextCursor = sorted[startIdx + cap] ? workoutKey(sorted[startIdx + cap]) : null;
+
+  const byActivityType = {};
+  for (const w of sorted) {
+    const k = String(w.name ?? w.activityType ?? 'unknown');
+    byActivityType[k] = (byActivityType[k] || 0) + 1;
+  }
+  return {
+    available: true,
+    summary: { count: sorted.length, byActivityType },
+    returned: page.length,
+    // Records go out AS-IS. The newer optional keys (avgHeartRate, intervals, running dynamics,
+    // hasRoute) exist only in caches written by app 1.5+; an older cache simply lacks them and
+    // nothing here fabricates or defaults them.
+    workouts: page,
+    nextCursor,
+    ...(nextCursor && {
+      note: `Returned ${page.length} of ${sorted.length} matching workouts. Call again with cursor:"${nextCursor}" for the next page.`,
+    }),
+  };
+}
+
+// ---- Cross-metric correlation ----------------------------------------------
+
+export async function correlateMetrics({ metricA, metricB, lag = 0, start, end } = {}) {
+  if (!metricA || !metricB) throw new Error('metricA and metricB are required');
+  assertUnlocked();
+  start = assertDay(start, 'start');
+  end = assertDay(end, 'end');
+  if (start && end && start > end) throw new Error(`start (${start}) is after end (${end})`);
+  const lagN = Number(lag);
+  if (!Number.isInteger(lagN) || lagN < 0 || lagN > 3) {
+    throw new Error(`lag must be an integer between 0 and 3 (got ${JSON.stringify(lag)}). lag 1 pairs metricA on day d with metricB on the following day.`);
+  }
+  const metrics = await loadMetrics();
+  for (const [label, name] of [['metricA', metricA], ['metricB', metricB]]) {
+    if (!metrics[name]) throw new Error(`unknown ${label} "${name}". Use list_metrics to see available names.`);
+  }
+  const aPts = (metrics[metricA].daily || []).filter((p) => inRange(p.d, start, end));
+  const bByDay = new Map((metrics[metricB].daily || []).map((p) => [p.d, p.v]));
+  // Alignment: A's day d pairs with B's day d+lag. The range bounds apply to A's days; B's partner
+  // day may fall just past `end`, which is correct, because with lag 1 the question is explicitly
+  // about the following day.
+  const pairs = [];
+  for (const p of aPts) {
+    const bd = ev.addDays(p.d, lagN);
+    if (bByDay.has(bd)) pairs.push([p.v, bByDay.get(bd)]);
+  }
+  const n = pairs.length;
+  const meanOf = (i) => (n ? round(pairs.reduce((s, pr) => s + pr[i], 0) / n) : null);
+  let r = null, note;
+  if (n < 10) {
+    // Small-n correlations are noise wearing a decimal point. Refusing the number entirely beats
+    // returning one with a warning an agent will drop on the floor.
+    note = `Only ${n} aligned day pair(s). Fewer than 10 aligned days is not enough to correlate; r is withheld.`;
+  } else {
+    let sx = 0, sy = 0, sxx = 0, syy = 0, sxy = 0;
+    for (const [x, y] of pairs) { sx += x; sy += y; sxx += x * x; syy += y * y; sxy += x * y; }
+    const den = Math.sqrt((n * sxx - sx * sx) * (n * syy - sy * sy));
+    if (den === 0) {
+      note = 'At least one of the two series is constant over the aligned days, so a correlation coefficient is undefined.';
+    } else {
+      r = round((n * sxy - sx * sy) / den);
+    }
+  }
+  return {
+    metricA: { name: metricA, unit: metrics[metricA].unit || '', mean: meanOf(0) },
+    metricB: { name: metricB, unit: metrics[metricB].unit || '', mean: meanOf(1) },
+    lag: lagN,
+    alignedPairs: n,
+    r,
+    attribution: lagN === 0
+      ? 'Same-day pairing: both metrics are compared on the same calendar day.'
+      : `metricA on day d is compared with metricB on day d+${lagN}. lag=1 means metricA on day d is compared with metricB on the FOLLOWING day.`,
+    caveat: "Association, not causation. A correlation here reflects alignment in this file's daily values only.",
+    ...(note && { note }),
+    range: { start: start || null, end: end || null },
   };
 }
 

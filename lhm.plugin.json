@@ -1,7 +1,7 @@
 {
   "identifier": "philipad-health-export-mcp",
   "name": "health-export-mcp",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "author": "Philip D'Souza",
   "authorUrl": "https://github.com/PhilipAD",
   "category": "health-wellness",
@@ -185,6 +185,133 @@
         },
         "required": [
           "question"
+        ]
+      }
+    },
+    {
+      "name": "list_events",
+      "description": "Logged context events from health-events.json: medication starts, habit changes, doctor visits, life events, shift blocks, episodes, travel. Optional type/tag/date filters; sorted ascending. Absence of the file means nothing was exported, not that nothing happened.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "type": {
+            "type": "string",
+            "description": "Event type, e.g. medication, habit, visit, life, shift, episode, travel, other."
+          },
+          "tag": {
+            "type": "string",
+            "description": "Match events carrying this tag."
+          },
+          "start": {
+            "type": "string",
+            "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+          },
+          "end": {
+            "type": "string",
+            "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+          }
+        }
+      }
+    },
+    {
+      "name": "get_profile",
+      "description": "The context fields the user explicitly opted in to sharing (health-profile.json), plus a presentFields list. An absent field was withheld or never enabled; absence must never be read as \"none\".",
+      "inputSchema": {
+        "type": "object",
+        "properties": {}
+      }
+    },
+    {
+      "name": "get_workouts",
+      "description": "Query the workouts cache with activityType (name or raw HealthKit id), start, end filters and cursor pagination. Records return as stored, including avgHeartRate, running dynamics, intervals and hasRoute when exported; older caches simply lack those keys.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "activityType": {
+            "type": "string",
+            "description": "Activity name (e.g. Running) or raw HealthKit activity id (e.g. 37)."
+          },
+          "start": {
+            "type": "string",
+            "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+          },
+          "end": {
+            "type": "string",
+            "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+          },
+          "limit": {
+            "type": "integer",
+            "description": "Workouts per page (default 50, max 200)."
+          },
+          "cursor": {
+            "type": "string",
+            "description": "Opaque cursor from a previous call's nextCursor."
+          }
+        }
+      }
+    },
+    {
+      "name": "get_sleep_sessions",
+      "description": "Clustered sleep sessions from health-sessions.json, attributed to the WAKING day. Split nights are multiple sessions with the same day, returned as-is.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+          },
+          "end": {
+            "type": "string",
+            "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+          },
+          "day": {
+            "type": "string",
+            "description": "A single waking day, YYYY-MM-DD."
+          }
+        }
+      }
+    },
+    {
+      "name": "get_cycle_context",
+      "description": "Day-in-cycle and coarse phase (follicular to the observed midpoint, luteal after) derived from logged period starts. Derived from logged periods only, never predictive.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+          }
+        }
+      }
+    },
+    {
+      "name": "correlate_metrics",
+      "description": "Pearson correlation between two metrics' daily values with a 0 to 3 day lag (lag 1 pairs metricA on day d with metricB on the following day). r is withheld below 10 aligned pairs; every answer states association is not causation.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "metricA": {
+            "type": "string"
+          },
+          "metricB": {
+            "type": "string"
+          },
+          "lag": {
+            "type": "integer",
+            "description": "0 to 3 days."
+          },
+          "start": {
+            "type": "string",
+            "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+          },
+          "end": {
+            "type": "string",
+            "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+          }
+        },
+        "required": [
+          "metricA",
+          "metricB"
         ]
       }
     }

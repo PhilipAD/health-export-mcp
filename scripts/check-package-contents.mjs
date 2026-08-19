@@ -23,6 +23,7 @@ import { execFileSync } from "node:child_process";
 const ALLOWED = new Set([
   "package.json", "README.md", "LICENSE",
   "server.mjs", "healthstore.mjs", "receiver.mjs",
+  "events.mjs", "prompts.mjs", "demo.mjs",
   "apply-mcp-config.mjs", "gen-deeplinks.mjs",
   "manifest.json", "server.json", "smithery.yaml", "glama.json", ".mcp.json",
   "health-export.mcpb", "minisign.pub",

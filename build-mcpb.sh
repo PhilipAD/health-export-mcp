@@ -8,7 +8,9 @@ OUT="health-export.mcpb"
 rm -f "$OUT"
 # -j keeps the files at the archive root (manifest.json must be at root).
 # receiver.mjs is bundled too so the .mcpb supports the local-network (LAN) path like the published copy.
-zip -j "$OUT" manifest.json server.mjs healthstore.mjs receiver.mjs >/dev/null
+# events/prompts/demo are hard imports of server.mjs since 1.4: omitting any of them makes the
+# bundled server crash on startup with a module-not-found error.
+zip -j "$OUT" manifest.json server.mjs healthstore.mjs receiver.mjs events.mjs prompts.mjs demo.mjs >/dev/null
 echo "built $OUT ($(du -h "$OUT" | cut -f1)) — contents:"
 unzip -l "$OUT" | awk 'NR>3 && $4 {print "  " $4}' | grep -v '^\s*$' | head
 echo "install: drag $OUT into Claude Desktop → Settings → Extensions"
