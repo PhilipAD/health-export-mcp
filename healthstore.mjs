@@ -121,11 +121,11 @@ export async function loadMetrics() {
   const meta = raw._meta;
   if (meta && Number(meta.schema) > SUPPORTED_SCHEMA) {
     throw new Error(
-      `This health cache was written by Health Export ${meta.app ?? 'a newer version'} using ` +
+      `This health cache was written by MetricBridge ${meta.app ?? 'a newer version'} using ` +
       `cache schema ${meta.schema}, but this MCP server only understands ${SUPPORTED_SCHEMA}. ` +
       // These are the two channels the site and SKILL.md actually document. (npm publishes
       // health-export-mcp too, but the pinned artifacts below are the checksum-verified path.)
-      `Update the Health Export MCP server: reinstall the bundle from https://www.healthexport.dev/health-export.mcpb, or re-download https://www.healthexport.dev/mcp/healthstore.mjs. Reading it anyway ` +
+      `Update the health-export-mcp server: reinstall the bundle from https://www.healthexport.dev/health-export.mcpb, or re-download https://www.healthexport.dev/mcp/healthstore.mjs. Reading it anyway ` +
       `could report wrong numbers.`);
   }
   // NULL PROTOTYPE. Every existence check here is `metrics[name]`, so inherited keys answered for

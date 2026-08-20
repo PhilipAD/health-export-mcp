@@ -1,4 +1,4 @@
-# Schema contracts — events, profile, sessions, cycles, days, workouts (2026-08-19)
+# Schema contracts: events, profile, sessions, cycles, days, workouts (2026-08-19)
 
 The single source of truth for the file formats added by the NOW+NEXT feature wave. Both the iOS
 app (writer) and the MCP server (reader) implement against this document. All additions here are
@@ -145,7 +145,7 @@ distanceMeters,distanceSource`. New OPTIONAL keys per workout:
   `groundContactTimeAvgMs` (running dynamics, when present)
 - `cyclingPowerAvgWatts`, `cadenceAvg`
 - `intervals`: `[{start, end, duration, kind}]` from HKWorkoutEvents/activities
-  (`kind`: `segment` | `lap` | `pause` | `activity:<subtype>`) — the per-interval structure HAE
+  (`kind`: `segment` | `lap` | `pause` | `activity:<subtype>`), the per-interval structure HAE
   loses (their open issue #54)
 - `hasRoute`: true when a workout route exists (GPX exported separately on demand as
   `workout-<id>.gpx`)

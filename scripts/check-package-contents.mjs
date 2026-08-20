@@ -25,7 +25,7 @@ const ALLOWED = new Set([
   "server.mjs", "healthstore.mjs", "receiver.mjs",
   "events.mjs", "prompts.mjs", "demo.mjs",
   "apply-mcp-config.mjs", "gen-deeplinks.mjs",
-  "manifest.json", "server.json", "smithery.yaml", "glama.json", ".mcp.json",
+  "manifest.json", "server.json", "glama.json", ".mcp.json",
   "health-export.mcpb", "minisign.pub",
   "llms.txt", "AGENTS.md",
   "Dockerfile", ".dockerignore",

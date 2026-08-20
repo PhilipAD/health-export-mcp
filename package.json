@@ -42,7 +42,6 @@
     "gen-deeplinks.mjs",
     "manifest.json",
     "server.json",
-    "smithery.yaml",
     "glama.json",
     ".mcp.json",
     "health-export.mcpb",

@@ -173,11 +173,11 @@ if (spec.shape === 'vscode') {
     const m = typeof v === 'string' && v.match(/^\$\{input:([A-Za-z0-9_]+)\}$/);
     if (m) used.add(m[1]);
   }
-  const DESC = { health_pairing_secret: 'Health Export pairing code', health_listen_token: 'Health Export LAN token (iOS pairing code)' };
+  const DESC = { health_pairing_secret: 'MetricBridge pairing code', health_listen_token: 'MetricBridge LAN token (iOS pairing code)' };
   root.inputs = Array.isArray(root.inputs) ? root.inputs : [];
   for (const id of used) {
     if (!root.inputs.some((i) => i && i.id === id)) {
-      root.inputs.push({ type: 'promptString', id, description: DESC[id] || 'Health Export secret', password: true });
+      root.inputs.push({ type: 'promptString', id, description: DESC[id] || 'MetricBridge secret', password: true });
     }
   }
   root.inputs = root.inputs.filter((i) => !(i && /^health_(pairing_secret|listen_token)$/.test(i.id) && !used.has(i.id)));
