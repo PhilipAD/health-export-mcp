@@ -149,6 +149,76 @@ export async function loadMetrics() {
 /// invalidated exactly when `readJSONCached` re-reads the file.
 let viewCache = { raw: null, view: Object.create(null) };
 
+/** The cache's `_meta` (schema, app, writtenAt, schemaMinor, recompute), or null. Absent on caches
+ *  written before app 1.2, and in demo mode (no file is read). */
+export function cacheMeta() {
+  if (DEMO || !pairing().ok) return null;
+  const raw = readJSONCached(path.join(DATA_DIR, '.health-cache.json'), {});
+  return raw && typeof raw._meta === 'object' ? raw._meta : null;
+}
+
+// ---- Late-arrival recompute provenance (cache schema minor 1, docs/SCHEMA-CONTRACTS.md s.9) ----
+// The app re-reads only the trailing days on each run. When Apple Health later receives samples
+// dated BEFORE that window (a scale or toothbrush syncing after a gap, a back-logged entry), or
+// samples are deleted, the app rebuilds the affected past days from HealthKit and stamps each one
+// with `r` (when it was rebuilt). Days older than its rebuild cap are not rebuilt; the app records
+// that in `_meta.recompute.capped[metric]` instead of dropping it silently. Everything here is
+// additive: an older cache has neither field and every answer is exactly what it was.
+// A deletion marker has no dates and nothing resolves it, so it expires after this many days
+// (the app drops it on its next write too).
+const DELETION_MARKER_DAYS = 30;
+const markerLive = (c) => !(c?.reason === 'deleted_samples'
+  && (!c.at || Date.parse(c.at) < Date.now() - DELETION_MARKER_DAYS * 86400000));
+const recomputeCapped = (name) => {
+  const c = cacheMeta()?.recompute?.capped?.[name];
+  return c && typeof c === 'object' && markerLive(c) ? c : null;
+};
+
+/** Rebuild provenance for `points` (already filtered to the caller's range) of metric `name`, or
+ *  null when nothing in range was rebuilt and no cap marker applies. `rangeStart`/`rangeEnd` decide
+ *  whether an un-rebuilt (capped) stretch overlaps what the caller asked about. */
+export function recomputeOf(name, points, rangeStart, rangeEnd, explicitStart) {
+  const rebuilt = points.filter((p) => typeof p.r === 'string');
+  const capped = recomputeCapped(name);
+  const capDays = cacheMeta()?.recompute?.capDays ?? null;
+  // A capped marker only matters when the question reaches back before the rebuild window. A
+  // deletion marker has no known dates at all, so it is shown only when the caller explicitly
+  // asked about days before it; otherwise every default-range answer would carry it for ever.
+  const isDeletion = capped?.reason === 'deleted_samples';
+  const cappedApplies = capped
+    && (!isDeletion || (!!explicitStart && !!capped.uncheckedBefore && explicitStart < capped.uncheckedBefore))
+    && (!rangeStart || !capped.uncheckedBefore || rangeStart < capped.uncheckedBefore)
+    && (!rangeEnd || !capped.oldest || rangeEnd >= capped.oldest);
+  if (!rebuilt.length && !cappedApplies) return null;
+  const latest = rebuilt.reduce((a, p) => (a == null || p.r > a ? p.r : a), null);
+  const notes = [];
+  if (rebuilt.length) {
+    notes.push(`${rebuilt.length} day(s) in this range were rebuilt from Apple Health after samples arrived late or were deleted (recomputed_at is the most recent rebuild). Days not listed in rebuiltDays were not touched by a rebuild.`);
+  }
+  if (cappedApplies) {
+    notes.push(capped.reason === 'deleted_samples'
+      ? `Samples were deleted in Apple Health and the app could not tell which days they were on. Days before ${capped.uncheckedBefore} were not re-checked, so they may still include the deleted samples.`
+      : `Samples dated ${capped.oldest ?? '?'} to ${capped.newest ?? '?'} arrived late but are older than the ${capDays ?? 'rebuild'}-day rebuild window, so those days were NOT rebuilt and may be stale. Exporting "Your full history" in the iOS app rebuilds them.`);
+  }
+  return {
+    backfilled_days: rebuilt.length,
+    recomputed_at: latest,
+    ...(rebuilt.length && { rebuiltDays: rebuilt.slice(-31).map((p) => p.d) }),
+    ...(rebuilt.length > 31 && { rebuiltDaysTruncated: rebuilt.length - 31 }),
+    ...(cappedApplies && {
+      capped: {
+        reason: capped.reason ?? 'late_samples',
+        ...(capped.oldest && { oldest: capped.oldest }),
+        ...(capped.newest && { newest: capped.newest }),
+        ...(capped.lastDays != null && { days: capped.lastDays }),
+        ...(capped.uncheckedBefore && { uncheckedBefore: capped.uncheckedBefore }),
+        ...(capped.at && { at: capped.at }),
+      },
+    }),
+    note: notes.join(' '),
+  };
+}
+
 export async function loadWorkouts() {
   if (!pairing().ok) return [];
   if (DEMO) return demoData().workouts;
@@ -229,17 +299,24 @@ function resolveGranularity(pointCount, requested, limit) {
 // averages -- the same rule HealthCache uses on the writing side, so a monthly step total and a
 // monthly resting-HR average both mean what a reader expects.
 function rollUp(points, granularity, cumulative) {
-  if (granularity === 'day') return points.map((p) => ({ date: p.d, value: round(p.v) }));
+  // A day rebuilt after late or deleted samples carries `recomputed_at`; an untouched day carries
+  // nothing extra, so the two are distinguishable point by point (schema minor 1).
+  if (granularity === 'day') {
+    return points.map((p) => ({ date: p.d, value: round(p.v), ...(typeof p.r === 'string' && { recomputed_at: p.r }) }));
+  }
   const buckets = new Map();
   for (const p of points) {
     const k = bucketKey(p.d, granularity);
-    if (!buckets.has(k)) buckets.set(k, []);
-    buckets.get(k).push(p.v);
+    if (!buckets.has(k)) buckets.set(k, { vs: [], rebuilt: 0 });
+    const b = buckets.get(k);
+    b.vs.push(p.v);
+    if (typeof p.r === 'string') b.rebuilt += 1;
   }
-  return [...buckets.entries()].map(([k, vs]) => ({
+  return [...buckets.entries()].map(([k, { vs, rebuilt }]) => ({
     date: k,
     value: round(cumulative ? vs.reduce((a, b) => a + b, 0) : vs.reduce((a, b) => a + b, 0) / vs.length),
     days: vs.length,
+    ...(rebuilt && { backfilled_days: rebuilt }),
   }));
 }
 
@@ -307,6 +384,32 @@ export async function status() {
     metricCount: names.length,
     workoutCount: Array.isArray(workouts) ? workouts.length : 0,
     lastDataDate: lastDate,
+    // Late-arrival recompute (cache schema minor 1). `supported: false` means the app that wrote
+    // this cache predates it: past days are only as fresh as the run that last covered them.
+    recompute: (() => {
+      const meta = cacheMeta();
+      const rec = meta?.recompute ?? null;
+      let rebuiltDays = 0;
+      const rebuiltMetrics = [];
+      for (const [name, m] of Object.entries(metrics)) {
+        const n = (m?.daily || []).filter((p) => typeof p.r === 'string').length;
+        if (n) { rebuiltDays += n; rebuiltMetrics.push(name); }
+      }
+      const capped = Object.entries(rec?.capped ?? {}).filter(([, c]) => markerLive(c)).map(([metric, c]) => ({ metric, ...c }))
+        .sort((x, y) => x.metric.localeCompare(y.metric));
+      return {
+        // A LAN receiver cache has no _meta but does carry `r` stamps pushed by the app.
+        supported: Number(meta?.schemaMinor ?? 0) >= 1 || rebuiltDays > 0,
+        ...(rec?.capDays != null && { capDays: rec.capDays }),
+        ...(rec?.lastRebuiltAt && { recomputed_at: rec.lastRebuiltAt, lastRebuiltDays: rec.lastRebuiltDays ?? null }),
+        backfilled_days: rebuiltDays,
+        ...(rebuiltMetrics.length && { metricsWithRebuiltDays: rebuiltMetrics.sort() }),
+        ...(capped.length && {
+          capped,
+          cappedNote: 'Some late samples (or deletions) affect days older than the app rebuilds per run, so those days may be stale. Data tools flag them per metric; exporting "Your full history" in the iOS app rebuilds them.',
+        }),
+      };
+    })(),
     // Additive: lets an agent see whether a live hourly window exists without calling the tool.
     intraday: (() => {
       const st = intradayStat();
@@ -498,6 +601,8 @@ export async function getHealthMetrics({ metric, start, end, aggregation, granul
       pointsInRange: points.length,
       coverage: coverageOf(m),
     };
+    const rc = recomputeOf(name, points, start || all[0]?.d, end || all[all.length - 1]?.d, start);
+    if (rc) out[name].recompute = rc;
     if (gran !== 'day') {
       out[name].note = `${points.length} daily values rolled up to ${gran}. Narrow start/end, or pass granularity:"day" with a smaller range, for day-level detail.`;
     }
@@ -605,7 +710,13 @@ export async function getTrends({ metric, window = 7, excludeTravelDays } = {}) 
   const spanStart = Number.isFinite(anchor) ? new Date(priorFrom).toISOString().slice(0, 10) : null;
   const spanEnd = daily.length ? daily[daily.length - 1].d : null;
   const bounds = spanStart && spanEnd ? ev.boundariesIn(spanStart, spanEnd) : null;
+  // Rebuilt days inside the compared span: a trend whose prior window was just rebuilt from late
+  // samples is a different finding from one computed over settled days.
+  const trendRc = Number.isFinite(anchor)
+    ? recomputeOf(metric, daily.filter((p2) => inSpan(p2, priorFrom, anchor)), spanStart, spanEnd)
+    : null;
   return {
+    ...(trendRc && { recompute: trendRc }),
     ...(bounds && bounds.length && {
       segmentBoundaries: bounds,
       segmentNote: ev.SEGMENT_NOTE(bounds.length),
@@ -724,6 +835,13 @@ export async function comparePeriods({ metric, periodA, periodB, anchor, exclude
   const travelA = a[metric]?.excludedDays ?? 0, travelB = b[metric]?.excludedDays ?? 0;
   return {
     metric, unit: a[metric]?.unit || '',
+    // Per side, so an agent can see WHICH period contains rebuilt (or un-rebuilt) days.
+    ...((a[metric]?.recompute || b[metric]?.recompute) && {
+      recompute: {
+        ...(a[metric]?.recompute && { periodA: a[metric].recompute }),
+        ...(b[metric]?.recompute && { periodB: b[metric].recompute }),
+      },
+    }),
     ...(anchorInfo && { anchor: anchorInfo }),
     ...(bounds.length && {
       segmentBoundaries: bounds,
@@ -820,11 +938,19 @@ export async function getStructuredExport({ metrics: names, start, end, granular
     const rolled = rollUp(points, gran, !!m.cumulative);
     // Stop BEFORE exceeding the budget, so a page is never half a metric.
     if (used > 0 && used + rolled.length > cap) break;
+    const rc = recomputeOf(name, points, start || m.daily?.[0]?.d, end || m.daily?.[m.daily.length - 1]?.d, start);
     data[name] = {
       unit: m.unit || '', cumulative: !!m.cumulative, granularity: gran,
-      daily: rolled.map((p) => ({ d: p.date, v: p.value })),
+      // `r` mirrors the cache's own per-day key: present only on days rebuilt after late or
+      // deleted samples (rolled-up buckets carry a count instead).
+      daily: rolled.map((p) => ({
+        d: p.date, v: p.value,
+        ...(p.recomputed_at && { r: p.recomputed_at }),
+        ...(p.backfilled_days && { backfilled_days: p.backfilled_days }),
+      })),
       pointsInRange: points.length,
       coverage: coverageOf(m),
+      ...(rc && { recompute: rc }),
     };
     used += rolled.length;
   }

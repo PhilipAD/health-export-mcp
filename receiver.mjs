@@ -44,6 +44,8 @@ function readMergeBase(file, fb) {
 }
 const isLoopback = (h) => h === '127.0.0.1' || h === '::1' || h === 'localhost';
 
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+
 // Validate/sanitise a pushed summary so a malicious LAN client can't poison the agent's context.
 function sanitize(incoming) {
   const out = {};
@@ -58,7 +60,11 @@ function sanitize(incoming) {
       if (!p || typeof p.d !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(p.d)) continue;
       const v = Number(p.v);
       if (!Number.isFinite(v)) continue;
-      daily.push({ d: p.d, v });
+      // `r`: the app rebuilt this past day after late-arriving samples (cache schema minor 1).
+      // Kept only when it is a plain ISO 8601 instant, so a pushed payload cannot smuggle anything
+      // else through to what the MCP server reads.
+      const r = typeof p.r === 'string' && ISO_INSTANT.test(p.r) ? p.r : null;
+      daily.push(r ? { d: p.d, v, r } : { d: p.d, v });
     }
     if (!daily.length) continue;
     out[name] = { unit: typeof m.unit === 'string' ? m.unit.slice(0, 32) : '', cumulative: !!m.cumulative, daily };
@@ -87,7 +93,7 @@ function sanitizeAuthoritative(incoming) {
 // `HealthCache.merge(_:_:authoritativeDays:authoritativeMetrics:)`; without it a LAN-only cache
 // kept deletions and TZ ghost days forever. Metrics not listed (e.g. sensitive types excluded from
 // the run) are never pruned. `yyyy-MM-dd` is fixed-width, so string order IS chronological.
-function mergeCache(existing, incoming) {
+export function mergeCache(existing, incoming) {
   const merged = { ...(existing || {}) };
   const cleaned = sanitize(incoming);
   const auth = sanitizeAuthoritative(incoming);
@@ -106,14 +112,21 @@ function mergeCache(existing, incoming) {
   }
 
   for (const [name, m] of Object.entries(cleaned)) {
-    const byDay = new Map((merged[name]?.daily || []).map((p) => [p.d, p.v]));
+    // A day keeps its recompute stamp (`r`) across later pushes that re-send the same value without
+    // one, matching HealthCache.merge on the app side; a newer stamp replaces it.
+    const byDay = new Map((merged[name]?.daily || []).map((p) => [p.d, p]));
     if (auth && auth.metrics.has(name)) {
       const incomingDays = new Set(m.daily.map((p) => p.d));
       for (const d of [...byDay.keys()]) if (inRange(d) && !incomingDays.has(d)) byDay.delete(d);
     }
-    for (const p of m.daily) byDay.set(p.d, p.v);
+    for (const p of m.daily) {
+      const prev = byDay.get(p.d);
+      const keep = !p.r && typeof prev?.r === 'string' && prev.v === p.v;
+      byDay.set(p.d, keep ? { ...p, r: prev.r } : p);
+    }
     merged[name] = { unit: m.unit || merged[name]?.unit || '', cumulative: !!m.cumulative,
-      daily: [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([d, v]) => ({ d, v })) };
+      daily: [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]))
+        .map(([d, p]) => (typeof p.r === 'string' ? { d, v: p.v, r: p.r } : { d, v: p.v })) };
   }
   return merged;
 }

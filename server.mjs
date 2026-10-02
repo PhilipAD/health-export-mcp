@@ -57,7 +57,7 @@ const ANNOTATIONS = { readOnlyHint: true, idempotentHint: true, openWorldHint: f
 const TOOLS = [
   {
     name: 'get_mcp_status',
-    description: 'Health check: data source, how many metrics/workouts are available, which optional context files exist, and the most recent data date. Call this first to confirm the bridge is connected.',
+    description: 'Health check: data source, how many metrics/workouts are available, which optional context files exist, the most recent data date, and a `recompute` summary of past days rebuilt after late-arriving samples (with any days too old to rebuild). Call this first to confirm the bridge is connected.',
     inputSchema: { type: 'object', properties: {} },
     handler: () => store.status(),
   },
@@ -71,7 +71,7 @@ const TOOLS = [
   },
   {
     name: 'get_health_metrics',
-    description: "Get values for a metric (or all metrics) over an optional date range, with an aggregate (avg/sum/min/max/latest). The core data-retrieval tool. Every result carries a `coverage` block giving the metric's real firstDate/lastDate/days: check it before trusting a long window, and note that `aggregate` is always computed over the full range even when `points` are rolled up. Single-metric answers also list any logged point events inside the window as segmentBoundaries.",
+    description: "Get values for a metric (or all metrics) over an optional date range, with an aggregate (avg/sum/min/max/latest). The core data-retrieval tool. Every result carries a `coverage` block giving the metric's real firstDate/lastDate/days: check it before trusting a long window, and note that `aggregate` is always computed over the full range even when `points` are rolled up. Single-metric answers also list any logged point events inside the window as segmentBoundaries. A day the app rebuilt after samples arrived late (or were deleted) carries `recomputed_at`, and a metric with rebuilt or possibly stale past days carries a `recompute` block (backfilled_days, recomputed_at, capped); untouched days carry neither.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -414,7 +414,8 @@ async function doctor() {
   }
   const raw = statFile('.health-cache.json') ? store.readJSONCached(store.dataPath('.health-cache.json'), null) : null;
   const meta = raw?._meta;
-  console.log(`  cache schema:    ${meta?.schema ?? (raw ? '1 (no _meta: pre-1.2 app)' : 'no cache file')}${meta?.app ? ` (app ${meta.app})` : ''}`);
+  console.log(`  cache schema:    ${meta?.schema ?? (raw ? '1 (no _meta: pre-1.2 app)' : 'no cache file')}${meta?.schemaMinor != null ? `.${meta.schemaMinor}` : ''}${meta?.app ? ` (app ${meta.app})` : ''}`);
+  if (meta?.recompute?.capped && Object.keys(meta.recompute.capped).length) console.log(`  recompute:       days older than the ${meta.recompute.capDays ?? '?'}-day rebuild cap may be stale for: ${Object.keys(meta.recompute.capped).sort().join(', ')}`);
   try {
     const metrics = p.ok ? await store.listMetrics() : null;
     if (metrics) {
