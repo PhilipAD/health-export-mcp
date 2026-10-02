@@ -67,11 +67,50 @@ function sanitize(incoming) {
   return out;
 }
 
+// Validate the `_authoritative` window the app sends alongside a push (AppModel LAN branch).
+// Same distrust as `sanitize`: strict day format, ordered range, allowlisted metric names.
+const DAY_RE = /^\d{4}-\d{2}-\d{2}$/;
+function sanitizeAuthoritative(incoming) {
+  const a = incoming && typeof incoming === 'object' ? incoming._authoritative : null;
+  if (!a || typeof a !== 'object') return null;
+  const { start, end } = a;
+  if (typeof start !== 'string' || typeof end !== 'string' || !DAY_RE.test(start) || !DAY_RE.test(end) || start > end) return null;
+  if (!Array.isArray(a.metrics)) return null;
+  const metrics = new Set(a.metrics.slice(0, MAX_METRICS).filter((n) => typeof n === 'string' && /^[A-Za-z0-9_]{1,64}$/.test(n)));
+  return { start, end, metrics };
+}
+
 // Merge a pushed (sanitised) summary into the cache — union by metric+day, last-write-wins.
+// When the push carries `_authoritative` {start, end, metrics}, the app just re-read those days for
+// those metrics, so inside that window the push IS the truth: any cached day it did not produce was
+// deleted in Apple Health (or is a ghost key from a previous time zone) and is pruned. Mirrors
+// `HealthCache.merge(_:_:authoritativeDays:authoritativeMetrics:)`; without it a LAN-only cache
+// kept deletions and TZ ghost days forever. Metrics not listed (e.g. sensitive types excluded from
+// the run) are never pruned. `yyyy-MM-dd` is fixed-width, so string order IS chronological.
 function mergeCache(existing, incoming) {
   const merged = { ...(existing || {}) };
-  for (const [name, m] of Object.entries(sanitize(incoming))) {
+  const cleaned = sanitize(incoming);
+  const auth = sanitizeAuthoritative(incoming);
+  const inRange = (d) => !!auth && d >= auth.start && d <= auth.end;
+
+  if (auth) {
+    for (const name of auth.metrics) {
+      if (cleaned[name] || !Object.hasOwn(merged, name)) continue;
+      const prev = Array.isArray(merged[name]?.daily) ? merged[name].daily : [];
+      const kept = prev.filter((p) => !inRange(p?.d));
+      if (kept.length === prev.length) continue;
+      // A full wipe removes the metric, not a present-but-empty shell agents read as "known".
+      if (kept.length === 0) delete merged[name];
+      else merged[name] = { ...merged[name], daily: kept };
+    }
+  }
+
+  for (const [name, m] of Object.entries(cleaned)) {
     const byDay = new Map((merged[name]?.daily || []).map((p) => [p.d, p.v]));
+    if (auth && auth.metrics.has(name)) {
+      const incomingDays = new Set(m.daily.map((p) => p.d));
+      for (const d of [...byDay.keys()]) if (inRange(d) && !incomingDays.has(d)) byDay.delete(d);
+    }
     for (const p of m.daily) byDay.set(p.d, p.v);
     merged[name] = { unit: m.unit || merged[name]?.unit || '', cumulative: !!m.cumulative,
       daily: [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0])).map(([d, v]) => ({ d, v })) };
