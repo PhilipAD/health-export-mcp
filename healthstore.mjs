@@ -28,7 +28,7 @@ import { DEMO, demoData } from './demo.mjs';
 import * as ev from './events.mjs';
 // Encrypted exports (opt-in in the iOS app): every data file may be a "metricbridge.enc" envelope.
 // readJSON opens it with HEALTH_EXPORT_PASSPHRASE, so every reader below is transparent to it.
-import { isEnvelope, openEnvelopeJSON, configuredPassphrase, EnvelopeError } from './envelope.mjs';
+import { isEnvelope, openEnvelope, configuredPassphrase, EnvelopeError } from './envelope.mjs';
 
 // Expand a leading ~ (Node, unlike the shell, does not) so manual configs resolve correctly.
 const RAW_DIR = process.env.HEALTH_DATA_DIR || '.';
@@ -51,7 +51,9 @@ const MAX_BYTES = Number(process.env.HEALTH_MAX_CACHE_BYTES || 512 * 1024 * 1024
 
 class CacheTooLarge extends Error {}
 
-function readJSON(file, fallback) {
+// `info.encrypted` is set when the file was an envelope, so callers that memoize the parse (and
+// `encryptionStatus`) know without parsing a tens-of-MB file a second time.
+function readJSON(file, fallback, info = {}) {
   let st;
   try {
     st = fs.statSync(file);
@@ -69,7 +71,19 @@ function readJSON(file, fallback) {
   // An encrypted export is NOT corrupt and must never read as "no data": no passphrase, the wrong
   // passphrase and a failed integrity check each THROW an EnvelopeError whose message says exactly
   // what to do. The passphrase itself never appears in any message.
-  if (isEnvelope(parsed)) return openEnvelopeJSON(parsed);
+  if (isEnvelope(parsed)) {
+    info.encrypted = true;
+    const plain = openEnvelope(parsed);
+    // An envelope that authenticates but holds bytes that are not JSON (a truncated write the app
+    // sealed as raw bytes) is a damaged export, not a crash: reported as an EnvelopeError so
+    // get_mcp_status explains it instead of rethrowing a bare SyntaxError.
+    try { return JSON.parse(plain.toString('utf8')); }
+    catch {
+      throw new EnvelopeError('corrupt',
+        'An encrypted health export opened with your passphrase but its contents are damaged. ' +
+        'Run an export from the MetricBridge app to rewrite it.');
+    }
+  }
   return parsed;
 }
 
@@ -77,10 +91,24 @@ function readJSON(file, fallback) {
  *  the envelope header (no decryption is attempted beyond what loading the data already does). */
 export function encryptionStatus() {
   if (DEMO) return { encrypted: false };
-  let raw;
-  try { raw = JSON.parse(fs.readFileSync(path.join(DATA_DIR, '.health-cache.json'), 'utf8')); }
-  catch { return { encrypted: false }; }
-  if (!isEnvelope(raw)) return { encrypted: false };
+  const file = path.join(DATA_DIR, '.health-cache.json');
+  // The cache was almost always just parsed (status() loads it first): reuse that answer rather
+  // than parsing a file that reaches tens of MB again. Fall back to a header read when it was not.
+  let encrypted;
+  const hit = _memo.get(file);
+  if (hit) {
+    try {
+      const st = fs.statSync(file);
+      if (hit.stamp === `${st.mtimeMs}:${st.size}`) encrypted = hit.encrypted;
+    } catch { return { encrypted: false }; }
+  }
+  if (encrypted === undefined) {
+    let raw;
+    try { raw = JSON.parse(fs.readFileSync(file, 'utf8')); }
+    catch { return { encrypted: false }; }
+    encrypted = isEnvelope(raw);
+  }
+  if (!encrypted) return { encrypted: false };
   let configured = false;
   try { configured = !!configuredPassphrase(); } catch { configured = false; }
   return { encrypted: true, passphraseConfigured: configured };
@@ -125,8 +153,9 @@ export function readJSONCached(file, fallback) {
   const stamp = `${st.mtimeMs}:${st.size}`;
   const hit = _memo.get(file);
   if (hit && hit.stamp === stamp) return hit.value;
-  const value = readJSON(file, fallback);
-  _memo.set(file, { stamp, value });
+  const info = {};
+  const value = readJSON(file, fallback, info);
+  _memo.set(file, { stamp, value, encrypted: !!info.encrypted });
   return value;
 }
 

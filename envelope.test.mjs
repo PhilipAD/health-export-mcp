@@ -284,6 +284,25 @@ test('doctor reports encryption state and never prints the passphrase', () => {
   assert.ok(!withPass.includes(PIPE_PASS));
 });
 
+test('an envelope that opens to non-JSON is reported as a damaged export, not a crash', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-enc-corrupt-'));
+  // Authenticates under the passphrase, but the plaintext is a truncated write (the app seals such
+  // leftovers as raw bytes rather than leave them readable).
+  fs.writeFileSync(path.join(dir, '.health-cache.json'),
+    JSON.stringify(sealEnvelope('{"step_count": {"unit": "count", "dai', PIPE_PASS, { iter: FAST })));
+  const s = startServer({ HEALTH_DATA_DIR: dir, HEALTH_EXPORT_PASSPHRASE: PIPE_PASS });
+  try {
+    await s.init();
+    const st = await s.call('get_mcp_status');
+    assert.equal(st.isError, false, st.text);
+    assert.equal(st.data.ok, false);
+    assert.equal(st.data.encrypted, true);
+    assert.equal(st.data.encryptionError, 'corrupt');
+    assert.match(st.data.note, /damaged/);
+    assert.ok(!JSON.stringify(st.data).includes(PIPE_PASS));
+  } finally { s.stop(); }
+});
+
 test('a plaintext export still reads exactly as before with a passphrase configured', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-plain-'));
   fs.writeFileSync(path.join(dir, '.health-cache.json'),
