@@ -200,8 +200,54 @@ node server.mjs --help
 - **Read-only.** The server only reads your exported data, it never touches HealthKit and never writes back.
 - **Local-first.** It runs on your machine over stdio. There is **no developer server** in the path.
 - **Optional pairing.** Set `PAIRING_SECRET` to the code the iOS app shows (Settings → Agent pairing) to gate access.
+- **Encrypted exports (optional).** If you switch on Export encryption in the iOS app, set `HEALTH_EXPORT_PASSPHRASE` (or `HEALTH_EXPORT_PASSPHRASE_FILE`) to the same passphrase and the server decrypts on your machine. See [Encrypted exports](#encrypted-exports).
 - **Auditable.** Zero dependencies and a few hundred lines of readable JavaScript, read every line.
 - **Signed releases.** Hosted artifacts are minisign-signed and checksummed, see [Verifying releases](#verifying-releases).
+
+---
+
+## Encrypted exports
+
+The iOS app can encrypt what it exports with a passphrase you choose (Settings > Export encryption,
+switched on per destination: iCloud Drive, a folder, your server, the local network). Give the server
+the same passphrase and every file is decrypted transparently, in memory, on this machine:
+
+```bash
+HEALTH_EXPORT_PASSPHRASE='your passphrase' HEALTH_DATA_DIR=... node server.mjs
+# or keep it out of your shell history and process list:
+HEALTH_EXPORT_PASSPHRASE_FILE=~/.config/metricbridge/passphrase HEALTH_DATA_DIR=... node server.mjs
+```
+
+If both are set, `HEALTH_EXPORT_PASSPHRASE` wins; one trailing newline in the file is ignored and an
+empty value counts as unset. The `.mcpb` bundle has an optional **Export passphrase** field. Plaintext
+exports keep working either way. A missing or wrong passphrase, or a file that fails its integrity
+check, is reported as such (`get_mcp_status` says `encrypted: true` plus the reason, `--doctor` prints
+an `encryption:` line), never as "no data". The passphrase is never logged or echoed.
+
+The LAN receiver (`HEALTH_LISTEN=1`) decrypts encrypted pushes with the same variable and answers
+`422` with a machine `reason` (`passphrase_missing`, `passphrase_mismatch`, `tampered`, `malformed`,
+`unsupported_version`, `passphrase_file_unreadable`, `encryption_required`). The pairing token rides
+in a plain `http` header on that leg, so set `HEALTH_REQUIRE_ENCRYPTED=1` to refuse plaintext pushes
+once the app encrypts that leg. To decrypt one body yourself (a webhook you run, a script):
+
+```bash
+HEALTH_EXPORT_PASSPHRASE='...' node envelope.mjs open body.json     # prints the decrypted JSON
+```
+
+**Format** (`metricbridge.enc` v1, `envelope.mjs`, `node:crypto` only): a JSON object
+`{format, v, alg: "A256GCM", kdf: "PBKDF2-HMAC-SHA256", iter, salt, kcv, nonce, ct}`.
+`master = PBKDF2-HMAC-SHA256(NFC(passphrase), salt[16], iter)` (600,000 iterations, the OWASP
+figure); an AES-256-GCM key and an 8-byte key-check value come off it with HKDF-SHA256; each message
+gets a random 12-byte nonce; every header field is bound in as AAD as the string
+`metricbridge.enc|v=1|alg=A256GCM|kdf=PBKDF2-HMAC-SHA256|iter=<n>|salt=<b64>|kcv=<b64>|nonce=<b64>`.
+Base64 is canonical with padding. `test/fixtures/` holds envelopes made by the iOS app's Swift encoder
+and by this module; `envelope.test.mjs` proves both open and regenerate byte for byte.
+
+**What it protects:** the export at rest in the destination (iCloud Drive, a synced folder, a
+webhook host's storage) and the LAN push on the wire, plus integrity of every sealed file. **What it
+does not:** an unlocked phone, this computer (it holds the passphrase), metadata (sizes, timing),
+rollback or replay of a whole sealed file, files you share by hand from the app, or a weak passphrase
+(anyone with the files can guess offline; the app requires at least 8 characters).
 
 ---
 

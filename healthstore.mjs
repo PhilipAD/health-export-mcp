@@ -26,6 +26,9 @@ import os from 'node:os';
 // functions, never at module-evaluation time.
 import { DEMO, demoData } from './demo.mjs';
 import * as ev from './events.mjs';
+// Encrypted exports (opt-in in the iOS app): every data file may be a "metricbridge.enc" envelope.
+// readJSON opens it with HEALTH_EXPORT_PASSPHRASE, so every reader below is transparent to it.
+import { isEnvelope, openEnvelopeJSON, configuredPassphrase, EnvelopeError } from './envelope.mjs';
 
 // Expand a leading ~ (Node, unlike the shell, does not) so manual configs resolve correctly.
 const RAW_DIR = process.env.HEALTH_DATA_DIR || '.';
@@ -59,9 +62,28 @@ function readJSON(file, fallback) {
       `health cache is ${(st.size / 1048576).toFixed(1)} MB, above the ${(MAX_BYTES / 1048576).toFixed(0)} MB read limit. ` +
       `Raise HEALTH_MAX_CACHE_BYTES if this is expected.`);
   }
+  let parsed;
   try {
-    return JSON.parse(fs.readFileSync(file, 'utf8'));
+    parsed = JSON.parse(fs.readFileSync(file, 'utf8'));
   } catch { return fallback; }              // corrupt -> fall back rather than crash the server
+  // An encrypted export is NOT corrupt and must never read as "no data": no passphrase, the wrong
+  // passphrase and a failed integrity check each THROW an EnvelopeError whose message says exactly
+  // what to do. The passphrase itself never appears in any message.
+  if (isEnvelope(parsed)) return openEnvelopeJSON(parsed);
+  return parsed;
+}
+
+/** What the data directory's encryption looks like, for get_mcp_status and `doctor`. Reads only
+ *  the envelope header (no decryption is attempted beyond what loading the data already does). */
+export function encryptionStatus() {
+  if (DEMO) return { encrypted: false };
+  let raw;
+  try { raw = JSON.parse(fs.readFileSync(path.join(DATA_DIR, '.health-cache.json'), 'utf8')); }
+  catch { return { encrypted: false }; }
+  if (!isEnvelope(raw)) return { encrypted: false };
+  let configured = false;
+  try { configured = !!configuredPassphrase(); } catch { configured = false; }
+  return { encrypted: true, passphraseConfigured: configured };
 }
 
 // Pairing gate: if the iOS app wrote `.health-pair.json`, the configured PAIRING_SECRET must
@@ -358,8 +380,28 @@ const round = (n) => (n == null ? null : Math.round(n * 1000) / 1000);
 
 export async function status() {
   const p = pairing();
-  const metrics = await loadMetrics();
-  const workouts = await loadWorkouts();
+  let metrics, workouts;
+  try {
+    metrics = await loadMetrics();
+    workouts = await loadWorkouts();
+  } catch (e) {
+    // An encrypted export this server cannot open is reported, not thrown: get_mcp_status is the
+    // tool agents call first, and it is where the fix (the passphrase) has to be spelled out.
+    if (!(e instanceof EnvelopeError)) throw e;
+    return {
+      ok: false,
+      source: sourceLabel(),
+      encrypted: true,
+      encryptionError: e.code,
+      note: e.message,
+      paired: p.required,
+      locked: p.required && !p.ok,
+      metricCount: 0,
+      workoutCount: 0,
+      lastDataDate: null,
+      metrics: [],
+    };
+  }
   const names = Object.keys(metrics);
   let lastDate = null;
   for (const m of Object.values(metrics)) {
@@ -378,6 +420,8 @@ export async function status() {
     }),
     paired: p.required,
     locked: p.required && !p.ok,
+    // Additive: true when the app sealed the export with a passphrase (and this server opened it).
+    encrypted: encryptionStatus().encrypted,
     note: (p.required && !p.ok)
       ? 'Locked: set PAIRING_SECRET to the code shown in the iOS app (Settings → Agent pairing → scan/paste).'
       : undefined,

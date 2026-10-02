@@ -24,6 +24,7 @@ import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
+import { isEnvelope, openEnvelopeJSON, sealEnvelope, parseHeader, configuredPassphrase, EnvelopeError } from './envelope.mjs';
 
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const MAX_BODY = 64 * 1024 * 1024;
@@ -34,13 +35,21 @@ const log = (...a) => process.stderr.write('[receiver] ' + a.map(String).join(' 
 function expandTilde(p) {
   return (p === '~' || p.startsWith('~/')) ? path.join(os.homedir(), p.slice(1)) : p;
 }
-function readJSON(file, fb) { try { return JSON.parse(fs.readFileSync(file, 'utf8')); } catch { return fb; } }
 // The merge base for an accumulated cache. ABSENT means start fresh; PRESENT-BUT-CORRUPT
 // must never become {} and overwrite the whole history — quarantine it, then start fresh.
-function readMergeBase(file, fb) {
-  if (!fs.existsSync(file)) return fb;
-  try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
-  catch { try { const bak = `${file}.corrupt-${process.pid}`; fs.renameSync(file, bak); log(`quarantined unreadable ${file} -> ${bak}`); } catch {} return fb; }
+//
+// Returns { value, sealedLike } where sealedLike is the envelope header when the existing cache was
+// encrypted (the receiver's directory can be the same iCloud folder the app seals into): the merged
+// result is then written back sealed under the SAME salt, so the app (which holds only the key for
+// that salt) can still read it and nothing is left behind in plaintext. An envelope this receiver
+// cannot open THROWS: quarantining it would restart a perfectly good history from one push.
+function readMergeBase(file, fb, passphrase) {
+  if (!fs.existsSync(file)) return { value: fb, sealedLike: null };
+  let parsed;
+  try { parsed = JSON.parse(fs.readFileSync(file, 'utf8')); }
+  catch { try { const bak = `${file}.corrupt-${process.pid}`; fs.renameSync(file, bak); log(`quarantined unreadable ${file} -> ${bak}`); } catch {} return { value: fb, sealedLike: null }; }
+  if (!isEnvelope(parsed)) return { value: parsed, sealedLike: null };
+  return { value: openEnvelopeJSON(parsed, passphrase), sealedLike: parseHeader(parsed) };
 }
 const isLoopback = (h) => h === '127.0.0.1' || h === '::1' || h === 'localhost';
 
@@ -131,12 +140,17 @@ export function mergeCache(existing, incoming) {
   return merged;
 }
 
-function writeCache(dir, json) {
+function writeCache(dir, json, passphrase = configuredPassphrase()) {
   const file = path.join(dir, '.health-cache.json');
   const tmp = `${file}.tmp-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;  // unique → no concurrent-write race
   fs.mkdirSync(dir, { recursive: true });
-  const merged = mergeCache(readMergeBase(file, {}), json);
-  fs.writeFileSync(tmp, JSON.stringify(merged, null, 2));
+  const base = readMergeBase(file, {}, passphrase);
+  const merged = mergeCache(base.value, json);
+  const text = JSON.stringify(merged, null, 2);
+  const out = base.sealedLike
+    ? JSON.stringify(sealEnvelope(text, passphrase, { salt: base.sealedLike.salt, iter: base.sealedLike.iter }))
+    : text;
+  fs.writeFileSync(tmp, out, { mode: 0o600 });
   fs.renameSync(tmp, file);
   log(`merged ${Object.keys(sanitize(json)).length} -> ${Object.keys(merged).length} metrics in ${file}`);
   return Object.keys(merged).length;
@@ -148,7 +162,12 @@ export function startReceiver({
   host = process.env.HEALTH_LISTEN_HOST || '127.0.0.1',
   port = Number(process.env.HEALTH_LISTEN_PORT || 27184),
   token = process.env.HEALTH_LISTEN_TOKEN || '',
-  onCache = (json) => writeCache(dir, json),
+  // The default merge uses the same passphrase source as the push decrypt below (the merge base
+  // can itself be sealed when this directory is the folder the app encrypts into).
+  onCache = (json) => writeCache(dir, json, passphrase()),
+  // A function, read per request: the environment is the source in production, tests inject one.
+  passphrase = () => configuredPassphrase(),
+  requireEncrypted = () => process.env.HEALTH_REQUIRE_ENCRYPTED === '1',
 } = {}) {
   // Fail closed: never expose an unauthenticated write endpoint on the network.
   if (!isLoopback(host) && !token) {
@@ -198,6 +217,22 @@ export function startReceiver({
         try { parsed = JSON.parse(body); }
         catch (e) { return json(res, 400, { ok: false, hae: true, error: 'invalid JSON' }); }   // 400 = parse only
         if (parsed && parsed._test === true) return json(res, 200, { ok: true, hae: true, test: true }); // probe: never touch the cache
+        // HEALTH_REQUIRE_ENCRYPTED=1: refuse plaintext pushes. The pairing token travels in a plain
+        // http header on this leg, so anyone who sniffed one push could otherwise forge plaintext
+        // data with it; requiring envelopes means a forger also needs the passphrase.
+        if (requireEncrypted() && !isEnvelope(parsed)) {
+          return json(res, 422, { ok: false, hae: true, reason: 'encryption_required', error: 'this receiver only accepts encrypted pushes' });
+        }
+        // Encrypted push (the app's "Local network" encryption switch). 422 + a machine `reason`
+        // the app turns into a sentence that says where to fix it. Never echoes the passphrase.
+        if (isEnvelope(parsed)) {
+          try { parsed = openEnvelopeJSON(parsed, passphrase()); }
+          catch (e) {
+            const reason = e instanceof EnvelopeError ? e.code : 'malformed';
+            log('encrypted push refused:', reason);
+            return json(res, 422, { ok: false, hae: true, reason, error: e instanceof EnvelopeError ? e.message : 'could not decrypt' });
+          }
+        }
         try { const n = onCache(parsed); json(res, 200, { ok: true, hae: true, metrics: n }); }
         catch (e) { log('write failed', e.message); json(res, 500, { ok: false, hae: true, error: 'write failed: ' + (e.code || e.message) }); } // 500 = disk/write
       });
@@ -231,7 +266,13 @@ export function startReceiver({
       if (opcode === 0xa) { buf = Buffer.alloc(0); return; }     // pong → ignore
       const msg = decodeTextFrame(buf);
       if (msg === null) return;                                  // incomplete or unsupported → wait
-      try { const n = onCache(JSON.parse(msg)); socket.write(encodeTextFrame(JSON.stringify({ ok: true, metrics: n }))); }
+      try {
+        let parsedMsg = JSON.parse(msg);
+        if (requireEncrypted() && !isEnvelope(parsedMsg)) throw new Error('plaintext push refused (HEALTH_REQUIRE_ENCRYPTED)');
+        if (isEnvelope(parsedMsg)) parsedMsg = openEnvelopeJSON(parsedMsg, passphrase());
+        const n = onCache(parsedMsg);
+        socket.write(encodeTextFrame(JSON.stringify({ ok: true, metrics: n })));
+      }
       catch (e) { log('bad WS json', e.message); socket.write(encodeTextFrame(JSON.stringify({ ok: false }))); }
       socket.end();
     });

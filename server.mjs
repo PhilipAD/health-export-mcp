@@ -412,7 +412,14 @@ async function doctor() {
     if (!newest || st.mtimeMs > newest.mtimeMs) newest = { name, mtimeMs: st.mtimeMs };
     console.log(`    ${name.padEnd(30)} ${fmtBytes(st.size).padStart(9)}   ${new Date(st.mtimeMs).toISOString()}`);
   }
-  const raw = statFile('.health-cache.json') ? store.readJSONCached(store.dataPath('.health-cache.json'), null) : null;
+  const enc = store.encryptionStatus();
+  console.log(`  encryption:      ${!enc.encrypted ? 'off (plaintext export)' : enc.passphraseConfigured ? 'on, passphrase configured' : 'on, NO PASSPHRASE: set HEALTH_EXPORT_PASSPHRASE to the passphrase from the iOS app'}`);
+  let raw = null;
+  try {
+    raw = statFile('.health-cache.json') ? store.readJSONCached(store.dataPath('.health-cache.json'), null) : null;
+  } catch (e) {
+    console.log(`  cache:           cannot be read: ${e.message}`);
+  }
   const meta = raw?._meta;
   console.log(`  cache schema:    ${meta?.schema ?? (raw ? '1 (no _meta: pre-1.2 app)' : 'no cache file')}${meta?.schemaMinor != null ? `.${meta.schemaMinor}` : ''}${meta?.app ? ` (app ${meta.app})` : ''}`);
   if (meta?.recompute?.capped && Object.keys(meta.recompute.capped).length) console.log(`  recompute:       days older than the ${meta.recompute.capDays ?? '?'}-day rebuild cap may be stale for: ${Object.keys(meta.recompute.capped).sort().join(', ')}`);
