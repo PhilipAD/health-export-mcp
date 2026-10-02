@@ -3,6 +3,8 @@ node_modules/
 *.log
 .health-cache.json
 .health-workouts-cache.json
+# Exception: the ENCRYPTED cross-language fixture (synthetic values, sealed with a test passphrase).
+!test/fixtures/encrypted-export/.health-cache.json
 .health-pair.json
 deeplinks.txt
 

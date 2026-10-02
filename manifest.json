@@ -32,7 +32,8 @@
       ],
       "env": {
         "HEALTH_DATA_DIR": "${user_config.health_data_dir}",
-        "PAIRING_SECRET": "${user_config.pairing_secret}"
+        "PAIRING_SECRET": "${user_config.pairing_secret}",
+        "HEALTH_EXPORT_PASSPHRASE": "${user_config.export_passphrase}"
       }
     }
   },
@@ -107,6 +108,13 @@
       "type": "string",
       "title": "Pairing code (optional)",
       "description": "If you turned on Agent pairing in the iOS app (Settings → Agent pairing), paste the code here. Leave blank if pairing is off.",
+      "required": false,
+      "sensitive": true
+    },
+    "export_passphrase": {
+      "type": "string",
+      "title": "Export passphrase (optional)",
+      "description": "Only if you turned on Export encryption in the iOS app (Settings > Export encryption): the same passphrase. It decrypts your exports on this computer and is never sent anywhere. Leave blank if encryption is off.",
       "required": false,
       "sensitive": true
     }

@@ -36,6 +36,7 @@
     "healthstore.mjs",
     "receiver.mjs",
     "events.mjs",
+    "envelope.mjs",
     "prompts.mjs",
     "demo.mjs",
     "apply-mcp-config.mjs",

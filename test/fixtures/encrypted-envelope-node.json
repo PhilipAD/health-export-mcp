@@ -1,0 +1,19 @@
+{
+  "description": "Produced by sealEnvelope (mcp/envelope.mjs, node:crypto). Opened and reproduced byte-for-byte by Tests/ExportEncryptionTests.swift. Test data only: not a real passphrase.",
+  "envelope": {
+    "alg": "A256GCM",
+    "ct": "QLdRoEJjcNapukgccz2JmCiArKFXhUubUUpt4tE2vgsvjTwoIvHGCGE0zJfwiihUI2XFMh+f2UGEm10TjglmnDBGiriuYBB0LpvjqEZITU5cZGDVpxx1ZgcH2fxECf6LHlO4jR8lTQ==",
+    "format": "metricbridge.enc",
+    "iter": 600000,
+    "kcv": "HCgZscHeVBY=",
+    "kdf": "PBKDF2-HMAC-SHA256",
+    "nonce": "oKGio6Slpqeoqaqr",
+    "salt": "AAECAwQFBgcICQoLDA0ODw==",
+    "v": 1
+  },
+  "iter": 600000,
+  "nonceHex": "a0a1a2a3a4a5a6a7a8a9aaab",
+  "passphrase": "correct horse battery staple, crème brûlée",
+  "plaintext": "{\"heart_rate\":{\"daily\":[{\"d\":\"2026-10-01\",\"v\":61}],\"unit\":\"count/min\"},\"source\":\"node\"}",
+  "saltHex": "000102030405060708090a0b0c0d0e0f"
+}
