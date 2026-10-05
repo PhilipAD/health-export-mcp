@@ -115,21 +115,34 @@ export function encryptionStatus() {
 }
 
 // Pairing gate: if the iOS app wrote `.health-pair.json`, the configured PAIRING_SECRET must
-// hash (sha256) to the stored value before any data is served. No pair file ⇒ open (the data is
-// already local-only). So a copied bundle / another iCloud user can't read without the secret.
+// hash (sha256) to the stored value before any data is served. A copied bundle / another iCloud
+// user can't read without the secret.
+//
+// Fail-closed on a MISSING gate file once the operator has opted into pairing (PAIRING_SECRET
+// set). The app writes `.health-pair.json` beside the cache on every export while paired, so the
+// only ways this file is absent are (a) pairing was never configured, or (b) it was deleted or
+// lost to a restore/sync glitch. Serving (b) open would silently hand the data to an agent that
+// should have been gated — protection-by-presence instead of by identity. When the operator HAS a
+// secret, a missing file is a misconfiguration (or the app has not exported since pairing), so we
+// refuse until the app has written it. Without a configured secret the data stays open, exactly as
+// before: unpaired local data has no second party to protect it from.
 export function pairing() {
   // Demo mode serves synthetic data only; there is nothing real to protect, and a stray
   // .health-pair.json in the cwd must not lock a dataset it does not own.
   if (DEMO) return { required: false, ok: true };
   const pair = readJSON(path.join(DATA_DIR, '.health-pair.json'), null);
-  if (!pair || !pair.hash) return { required: false, ok: true };
   const secret = process.env.PAIRING_SECRET || '';
+  if (!pair || !pair.hash) {
+    if (secret) return { required: true, ok: false,
+      reason: 'PAIRING_SECRET is set but no .health-pair.json exists here - pair the iOS app (Settings > Agent pairing) and run one export before serving data' };
+    return { required: false, ok: true };
+  }
   const h = crypto.createHash('sha256').update(secret).digest('hex');
   let ok = false;
   if (secret.length > 0 && typeof pair.hash === 'string' && pair.hash.length === h.length) {
     ok = crypto.timingSafeEqual(Buffer.from(h), Buffer.from(pair.hash)); // constant-time
   }
-  return { required: true, ok };
+  return { required: true, ok, reason: ok ? undefined : 'pairing secret mismatch: check PAIRING_SECRET matches the code shown in the iOS app' };
 }
 
 // Throw a clear "locked" error from the data tools when pairing is required but not satisfied,
@@ -138,7 +151,7 @@ export function pairing() {
 // files carry exactly the context (medication, cycles) the gate exists to protect.
 export function assertUnlocked() {
   const p = pairing();
-  if (p.required && !p.ok) throw new Error('Locked: set PAIRING_SECRET to the code shown in the iOS app (Settings → Agent pairing).');
+  if (p.required && !p.ok) throw new Error(`Locked: ${p.reason || 'set PAIRING_SECRET to the code shown in the iOS app (Settings → Agent pairing).'}`);
 }
 
 // Parsing the cache is the single most expensive thing this server does, and every tool call used

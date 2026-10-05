@@ -30,6 +30,10 @@ const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
 const MAX_BODY = 64 * 1024 * 1024;
 const MAX_WS_BUF = 70 * 1024 * 1024;
 const MAX_METRICS = 2000, MAX_DAYS = 8000;
+// The cache file accumulates across pushes (union, last-write-wins) and is never trimmed by a push,
+// so a token holder could grow it without bound and fill the disk. A full 190-metric, multi-year
+// cache is a few MB; 64 MB is far beyond any real dataset and a firm ceiling for hostile growth.
+const MAX_CACHE_FILE = 64 * 1024 * 1024;
 const log = (...a) => process.stderr.write('[receiver] ' + a.map(String).join(' ') + '\n');
 
 function expandTilde(p) {
@@ -140,16 +144,30 @@ export function mergeCache(existing, incoming) {
   return merged;
 }
 
-function writeCache(dir, json, passphrase = configuredPassphrase()) {
+function writeCache(dir, json, passphrase = configuredPassphrase(), sealFresh = false) {
   const file = path.join(dir, '.health-cache.json');
   const tmp = `${file}.tmp-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;  // unique → no concurrent-write race
   fs.mkdirSync(dir, { recursive: true });
   const base = readMergeBase(file, {}, passphrase);
   const merged = mergeCache(base.value, json);
   const text = JSON.stringify(merged, null, 2);
-  const out = base.sealedLike
-    ? JSON.stringify(sealEnvelope(text, passphrase, { salt: base.sealedLike.salt, iter: base.sealedLike.iter }))
-    : text;
+  // Seal when the existing file is already an envelope (preserve its salt/iter so the app's key
+  // still matches), OR when fresh-sealing is requested (HEALTH_REQUIRE_ENCRYPTED=1 on a directory
+  // whose cache file is not yet an envelope). Previously a fresh dir stored decrypted even though
+  // every incoming push was encrypted — the flag promised full at-rest encryption and silently
+  // delivered plaintext. Refuse to store plaintext when encryption is required but no passphrase
+  // is configured: a misconfiguration, not a downgrade path.
+  let out;
+  if (base.sealedLike || (sealFresh && passphrase)) {
+    out = JSON.stringify(sealEnvelope(text, passphrase, { salt: base.sealedLike?.salt, iter: base.sealedLike?.iter }));
+  } else if (sealFresh) {
+    throw new Error('encryption required but no passphrase configured - refusing to store plaintext');
+  } else {
+    out = text;
+  }
+  if (Buffer.byteLength(out) > MAX_CACHE_FILE) {
+    throw new Error('cache would exceed the size ceiling; refusing to grow it further');
+  }
   fs.writeFileSync(tmp, out, { mode: 0o600 });
   fs.renameSync(tmp, file);
   log(`merged ${Object.keys(sanitize(json)).length} -> ${Object.keys(merged).length} metrics in ${file}`);
@@ -163,8 +181,10 @@ export function startReceiver({
   port = Number(process.env.HEALTH_LISTEN_PORT || 27184),
   token = process.env.HEALTH_LISTEN_TOKEN || '',
   // The default merge uses the same passphrase source as the push decrypt below (the merge base
-  // can itself be sealed when this directory is the folder the app encrypts into).
-  onCache = (json) => writeCache(dir, json, passphrase()),
+  // can itself be sealed when this directory is the folder the app encrypts into). `sealFresh`
+  // passes HEALTH_REQUIRE_ENCRYPTED through to first-write sealing, closing the fresh-dir
+  // plaintext-at-rest gap.
+  onCache = (json) => writeCache(dir, json, passphrase(), requireEncrypted()),
   // A function, read per request: the environment is the source in production, tests inject one.
   passphrase = () => configuredPassphrase(),
   requireEncrypted = () => process.env.HEALTH_REQUIRE_ENCRYPTED === '1',
@@ -202,26 +222,33 @@ export function startReceiver({
   };
 
   const json = (res, code, obj) => { res.statusCode = code; res.setHeader('content-type', 'application/json'); res.end(JSON.stringify(obj)); };
+  // Slowloris / partial-trickle defense for the POST path: the request body accumulates in
+  // memory per connection, so a client that dribbles bytes can hold sockets open forever.
+  // Cap idle time while reading a body; a legit export finishes well inside this.
+  const BODY_READ_TIMEOUT = 30_000;
   const server = http.createServer((req, res) => {
     if (req.method === 'POST' && req.url === '/health-cache') {
       const g = gate(req); if (!g.ok) return json(res, g.code, { ok: false, hae: true, error: g.msg });
-      let body = '', tooBig = false;
+      let body = '', tooBig = false, done = false;
+      const finish = (code, obj) => { if (done) return; done = true; clearTimeout(idle); json(res, code, obj); };
+      const idle = setTimeout(() => { finish(408, { ok: false, hae: true, error: 'request read timeout' }); req.destroy(); }, BODY_READ_TIMEOUT);
       req.setEncoding('utf8');
       req.on('data', (c) => {
         body += c;
-        if (body.length > MAX_BODY && !tooBig) { tooBig = true; json(res, 413, { ok: false, hae: true, error: 'payload too large' }); req.destroy(); }
+        if (body.length > MAX_BODY && !tooBig) { tooBig = true; finish(413, { ok: false, hae: true, error: 'payload too large' }); req.destroy(); }
       });
       req.on('end', () => {
         if (tooBig || res.writableEnded) return;
+        clearTimeout(idle);
         let parsed;
         try { parsed = JSON.parse(body); }
-        catch (e) { return json(res, 400, { ok: false, hae: true, error: 'invalid JSON' }); }   // 400 = parse only
-        if (parsed && parsed._test === true) return json(res, 200, { ok: true, hae: true, test: true }); // probe: never touch the cache
+        catch (e) { return finish(400, { ok: false, hae: true, error: 'invalid JSON' }); }   // 400 = parse only
+        if (parsed && parsed._test === true) return finish(200, { ok: true, hae: true, test: true }); // probe: never touch the cache
         // HEALTH_REQUIRE_ENCRYPTED=1: refuse plaintext pushes. The pairing token travels in a plain
         // http header on this leg, so anyone who sniffed one push could otherwise forge plaintext
         // data with it; requiring envelopes means a forger also needs the passphrase.
         if (requireEncrypted() && !isEnvelope(parsed)) {
-          return json(res, 422, { ok: false, hae: true, reason: 'encryption_required', error: 'this receiver only accepts encrypted pushes' });
+          return finish(422, { ok: false, hae: true, reason: 'encryption_required', error: 'this receiver only accepts encrypted pushes' });
         }
         // Encrypted push (the app's "Local network" encryption switch). 422 + a machine `reason`
         // the app turns into a sentence that says where to fix it. Never echoes the passphrase.
@@ -230,11 +257,11 @@ export function startReceiver({
           catch (e) {
             const reason = e instanceof EnvelopeError ? e.code : 'malformed';
             log('encrypted push refused:', reason);
-            return json(res, 422, { ok: false, hae: true, reason, error: e instanceof EnvelopeError ? e.message : 'could not decrypt' });
+            return finish(422, { ok: false, hae: true, reason, error: e instanceof EnvelopeError ? e.message : 'could not decrypt' });
           }
         }
-        try { const n = onCache(parsed); json(res, 200, { ok: true, hae: true, metrics: n }); }
-        catch (e) { log('write failed', e.message); json(res, 500, { ok: false, hae: true, error: 'write failed: ' + (e.code || e.message) }); } // 500 = disk/write
+        try { const n = onCache(parsed); finish(200, { ok: true, hae: true, metrics: n }); }
+        catch (e) { log('write failed', e.message); finish(500, { ok: false, hae: true, error: 'write failed: ' + (e.code || e.message) }); } // 500 = disk/write
       });
       return;
     }

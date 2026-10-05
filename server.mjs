@@ -403,7 +403,7 @@ async function doctor() {
   console.log(`  data dir:        ${dir}${fs.existsSync(dir) ? '' : '   (DOES NOT EXIST)'}`);
   if (DEMO) console.log('  mode:            SYNTHETIC DEMO DATA (--demo / HEALTH_DEMO=1); the report below still describes the real directory');
   const p = store.pairing();
-  console.log(`  pairing:         ${!p.required ? 'not required (no .health-pair.json)' : p.ok ? 'required, unlocked' : 'required, LOCKED: set PAIRING_SECRET to the code in the iOS app'}`);
+  console.log(`  pairing:         ${!p.required ? 'not required (no .health-pair.json, no PAIRING_SECRET)' : p.ok ? 'required, unlocked' : 'required, LOCKED: ' + (p.reason || 'check PAIRING_SECRET')}`);
   console.log('  files:');
   let newest = null;
   for (const name of DATA_FILES) {

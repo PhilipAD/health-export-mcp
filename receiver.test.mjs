@@ -25,6 +25,16 @@ function post(pathname, body, headers = {}) {
   });
 }
 
+function postAt(port, pathname, body, headers = {}) {
+  return new Promise((resolve) => {
+    const req = http.request({ host: '127.0.0.1', port, path: pathname, method: 'POST',
+      headers: { 'content-type': 'application/json', ...headers } }, (res) => {
+      let d = ''; res.on('data', (c) => d += c); res.on('end', () => resolve({ status: res.statusCode, body: d }));
+    });
+    req.end(typeof body === 'string' ? body : JSON.stringify(body));
+  });
+}
+
 function wsPush(payload, token) {
   return new Promise((resolve, reject) => {
     const sock = net.connect(PORT, '127.0.0.1', () => {
@@ -103,6 +113,29 @@ assert.ok(!fs.existsSync(cacheFile), 'ping must not create the cache file'); ok(
 const rt = await post('/health-cache', CACHE, { 'x-health-token': 'NOPE' });
 assert.equal(rt.status, 401); ok('bad token → 401 (distinct from 403 host)');
 
+// --- Fresh-dir at-rest sealing: HEALTH_REQUIRE_ENCRYPTED=1 on an EMPTY directory must store the
+// merged cache SEALED, not decrypt-then-write-plaintext (the MED-1 regression). ---
 server.close();
+{
+  const sealDir = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-recv-seal-'));
+  const P = 27299;
+  const sealSrv = startReceiver({ dir: sealDir, host: '127.0.0.1', port: P, token: '',
+    passphrase: () => 'test-passphrase', requireEncrypted: () => true });
+  await new Promise((r) => sealSrv.on('listening', r));
+  const { sealEnvelope, isEnvelope } = await import('./envelope.mjs');
+  const env = sealEnvelope(JSON.stringify(CACHE), 'test-passphrase');
+  const rr = await postAt(P, '/health-cache', env);
+  assert.equal(rr.status, 200);
+  const stored = JSON.parse(fs.readFileSync(path.join(sealDir, '.health-cache.json'), 'utf8'));
+  assert.ok(isEnvelope(stored), 'REQUIRE_ENCRYPTED=1 + fresh dir must store an envelope, not plaintext');
+  ok('REQUIRE_ENCRYPTED=1 fresh dir stores SEALED (no plaintext at rest)');
+  // The sealed file decrypts back and the plaintext merge base is NOT the stored bytes.
+  const { openEnvelopeJSON } = await import('./envelope.mjs');
+  const back = openEnvelopeJSON(stored, 'test-passphrase');
+  assert.equal(back.step_count.daily[0].v, 9500);
+  ok('sealed fresh-dir cache decrypts back to the pushed data');
+  sealSrv.close(); fs.rmSync(sealDir, { recursive: true, force: true });
+}
+
 fs.rmSync(dir, { recursive: true, force: true });
 console.log('✅ receiver: ALL PASSED');
