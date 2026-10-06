@@ -29,6 +29,9 @@ import * as ev from './events.mjs';
 // Encrypted exports (opt-in in the iOS app): every data file may be a "metricbridge.enc" envelope.
 // readJSON opens it with HEALTH_EXPORT_PASSPHRASE, so every reader below is transparent to it.
 import { isEnvelope, openEnvelope, configuredPassphrase, EnvelopeError } from './envelope.mjs';
+// Canonical metric naming and unit table (FR cross-source normalisation): lets the data tools
+// accept "steps", "StepCount" or "HKQuantityTypeIdentifierStepCount" for step_count.
+import * as norm from './normalize.mjs';
 
 // Expand a leading ~ (Node, unlike the shell, does not) so manual configs resolve correctly.
 const RAW_DIR = process.env.HEALTH_DATA_DIR || '.';
@@ -297,6 +300,18 @@ export function sourceLabel() {
 // ---- helpers ----
 const inRange = (d, start, end) => (!start || d >= start) && (!end || d <= end);
 
+/** Resolve a requested metric name against the loaded export. An exact name is returned untouched
+ *  (every pre-existing call answers exactly as before); an alias or alternate spelling of ONE
+ *  present metric resolves to it and the caller reports `resolvedFrom`; anything else throws the
+ *  same "unknown metric" error as before, now with the reason when the table knows one (ambiguous
+ *  word, different measure, or a canonical metric this export does not contain). */
+function resolveMetricName(metrics, name, label = 'metric') {
+  if (metrics[name]) return { name, resolvedFrom: null };
+  const r = norm.resolvePresent(metrics, name);
+  if (r.name) return { name: r.name, resolvedFrom: r.resolved };
+  throw new Error(`unknown ${label} "${name}"${r.reason ? ` (${r.reason})` : ''}. Use list_metrics to see available names, or resolve_metric to look a name up.`);
+}
+
 // Dates arrive as strings and were previously compared lexicographically with no validation, so
 // "2026-8-1" or "last tuesday" silently matched nothing and the tool returned an empty series with
 // isError:false -- an agent could not tell "no data" from "you typed the date wrong".
@@ -441,6 +456,8 @@ export async function status() {
       metricCount: 0,
       workoutCount: 0,
       lastDataDate: null,
+      // Write times are still readable when the contents are not.
+      freshness: await freshness({ detail: false }),
       metrics: [],
     };
   }
@@ -470,6 +487,9 @@ export async function status() {
     metricCount: names.length,
     workoutCount: Array.isArray(workouts) ? workouts.length : 0,
     lastDataDate: lastDate,
+    // Additive: the compact staleness signal (get_freshness has the per-file breakdown), so an
+    // agent's first call already tells it whether to trust today's numbers.
+    freshness: await freshness({ detail: false }),
     // Late-arrival recompute (cache schema minor 1). `supported: false` means the app that wrote
     // this cache predates it: past days are only as fresh as the run that last covered them.
     recompute: (() => {
@@ -519,6 +539,174 @@ export async function status() {
 
 function fileExists(name) {
   try { return fs.statSync(path.join(DATA_DIR, name)).isFile(); } catch { return false; }
+}
+
+// ---- Freshness (staleness signalling) --------------------------------------
+// An agent pointed at an exported file cannot otherwise tell whether what it just read is this
+// morning's data or three weeks old. Everything here is derived from what already exists: file
+// write times, the cache's `_meta.writtenAt`, and the newest daily point. The rule that decides
+// `stale` is the SAME one the `node server.mjs status --max-age N` cron gate uses (age of the
+// newest write across the file family), so a tool answer and the gate's exit code never disagree.
+
+/** The complete file family one export can produce. Shared by doctor, the cron gate and
+ *  `freshness()`, because "the cache is fresh but events are three weeks stale" is a real state. */
+export const DATA_FILES = [
+  '.health-cache.json',
+  '.health-workouts-cache.json',
+  'health-intraday.json',
+  'health-events.json',
+  'health-profile.json',
+  'health-sessions.json',
+  'health-cycles.json',
+  'health-days.json',
+];
+
+/** One daily automation run plus two hours of slack: iOS schedules background work loosely, so a
+ *  24-hour threshold would flag a daily export that ran a few minutes late as stale. */
+export const DEFAULT_STALE_AFTER_HOURS = 26;
+const MAX_STALE_AFTER_HOURS = 8760;   // one year; anything larger is a typo, not a policy
+
+const validHours = (n) => typeof n === 'number' && Number.isFinite(n) && n > 0 && n <= MAX_STALE_AFTER_HOURS;
+
+/** The staleness threshold in hours: the caller's `maxAgeHours` when given (validated, throws on
+ *  nonsense so an agent learns its argument was wrong), else HEALTH_STALE_AFTER_HOURS when it is a
+ *  sane number, else the default. A malformed env value falls back rather than disabling the
+ *  signal, mirroring HEALTH_MAX_RESULT_CHARS. */
+export function staleAfterHours(maxAgeHours) {
+  if (maxAgeHours !== undefined && maxAgeHours !== null) {
+    if (!validHours(maxAgeHours)) {
+      throw new Error(`maxAgeHours must be a number of hours greater than 0 and at most ${MAX_STALE_AFTER_HOURS}, got ${JSON.stringify(maxAgeHours)}`);
+    }
+    return maxAgeHours;
+  }
+  const raw = process.env.HEALTH_STALE_AFTER_HOURS;
+  const env = raw == null || raw === '' ? NaN : Number(raw);
+  return validHours(env) ? env : DEFAULT_STALE_AFTER_HOURS;
+}
+
+function statData(name) {
+  try {
+    const st = fs.statSync(path.join(DATA_DIR, name));
+    return st.isFile() ? st : null;
+  } catch { return null; }
+}
+
+/** The most recently written file of the family, as {file, mtimeMs, at}, or null when none exist. */
+export function newestWrite() {
+  let newest = null;
+  for (const name of DATA_FILES) {
+    const st = statData(name);
+    if (st && (!newest || st.mtimeMs > newest.mtimeMs)) newest = { file: name, mtimeMs: st.mtimeMs };
+  }
+  return newest && { ...newest, at: new Date(newest.mtimeMs).toISOString() };
+}
+
+// Never negative: a file stamped slightly in the future (clock skew between the phone, the sync
+// service and this machine) reads as "just written". `stale` is decided on the UNROUNDED age, the
+// exact comparison the cron gate makes; only the reported number is rounded to one decimal.
+const rawAgeHours = (ms, now) => Math.max(0, (now - ms) / 3600000);
+const round1 = (h) => Math.round(h * 10) / 10;
+
+function localDay(ms) {
+  const t = new Date(ms);
+  return `${t.getFullYear()}-${String(t.getMonth() + 1).padStart(2, '0')}-${String(t.getDate()).padStart(2, '0')}`;
+}
+
+/** Machine-readable freshness of the exported files. `detail:false` drops the per-file breakdown
+ *  (used for the compact block inside get_mcp_status). `now` is injectable for tests. */
+export async function freshness({ maxAgeHours, detail = true, now = Date.now() } = {}) {
+  const threshold = staleAfterHours(maxAgeHours);
+  const base = { stale_after_hours: threshold, checked_at: new Date(now).toISOString() };
+  if (DEMO) {
+    // Nothing on disk is read in demo mode and the synthetic dataset is pinned to a fixed date, so
+    // any age computed here would be meaningless. Say so instead of inventing one.
+    return {
+      state: 'demo', stale: null, ...base,
+      recommendation: 'SYNTHETIC DEMO DATA: no export is read, so there is no real freshness to report. Restart without --demo to check a real export.',
+    };
+  }
+  const p = pairing();
+  if (p.required && !p.ok) {
+    return {
+      state: 'locked', stale: null, ...base,
+      recommendation: 'Locked: set PAIRING_SECRET to the code shown in the iOS app (Settings → Agent pairing) before freshness can be reported.',
+    };
+  }
+
+  const newest = newestWrite();
+  const files = {};
+  const staleFiles = [];
+  for (const name of DATA_FILES) {
+    const st = statData(name);
+    if (!st) continue;
+    const age = rawAgeHours(st.mtimeMs, now);
+    files[name] = { lastWrite: new Date(st.mtimeMs).toISOString(), age_hours: round1(age) };
+    if (age > threshold) staleFiles.push(name);
+  }
+
+  // When the phone wrote the daily cache. `_meta.writtenAt` is the app's own stamp and survives a
+  // slow iCloud sync; a cache without it (pre-1.2 app, LAN receiver) falls back to the file time.
+  let asOf = null, asOfSource = null, lastDataDate = null, cacheReadError;
+  const cacheStat = statData('.health-cache.json');
+  try {
+    const written = cacheMeta()?.writtenAt;
+    if (typeof written === 'string' && Number.isFinite(Date.parse(written))) {
+      asOf = new Date(Date.parse(written)).toISOString();
+      asOfSource = 'cache_meta';
+    }
+    const metrics = await loadMetrics();
+    for (const m of Object.values(metrics)) {
+      const d = m?.daily?.[m.daily.length - 1]?.d;
+      if (typeof d === 'string' && (!lastDataDate || d > lastDataDate)) lastDataDate = d;
+    }
+  } catch (e) {
+    // An encrypted cache without its passphrase, an oversize file or a newer schema still has
+    // meaningful write times; report those rather than failing the whole freshness answer.
+    cacheReadError = e instanceof EnvelopeError ? e.code : String(e?.message || e);
+  }
+  if (!asOf && cacheStat) { asOf = new Date(cacheStat.mtimeMs).toISOString(); asOfSource = 'file_mtime'; }
+
+  let dataLagDays = null;
+  if (lastDataDate && /^\d{4}-\d{2}-\d{2}$/.test(lastDataDate)) {
+    const today = localDay(now);
+    dataLagDays = Math.max(0, Math.round((Date.parse(today + 'T00:00:00Z') - Date.parse(lastDataDate + 'T00:00:00Z')) / 86400000));
+  }
+
+  if (!newest) {
+    return {
+      state: 'no_data', stale: true, ...base,
+      as_of: null, as_of_source: null, newest_write: null, age_hours: null,
+      last_data_date: null, data_lag_days: null,
+      ...(detail && { files: {}, stale_files: [] }),
+      recommendation: 'No export files were found in the data folder. Export from the MetricBridge iOS app, then check again.',
+    };
+  }
+  const rawAge = rawAgeHours(newest.mtimeMs, now);
+  const stale = rawAge > threshold;
+  const age = round1(rawAge);
+  // A cache that could not be read must not read as plainly usable even when its file is recent:
+  // the data tools will fail on it. `state` stays a write-time verdict (stable values); the
+  // recommendation carries the problem.
+  const readNote = cacheReadError
+    ? ` The daily cache could not be read (${cacheReadError}), so data tools will fail until that is fixed; run get_mcp_status for the details.`
+    : '';
+  return {
+    state: stale ? 'stale' : 'fresh',
+    stale,
+    ...base,
+    as_of: asOf,
+    as_of_source: asOfSource,
+    newest_write: { file: newest.file, at: newest.at },
+    age_hours: age,
+    last_data_date: lastDataDate,
+    data_lag_days: dataLagDays,
+    ...(cacheReadError && { cacheReadError }),
+    ...(detail && { files, stale_files: staleFiles }),
+    recommendation: (stale
+      ? `The newest export is ${age} hours old, older than the ${threshold}-hour window. Answers only cover data up to ${lastDataDate ?? 'the last export'}; if current numbers matter, ask the user to open MetricBridge or run an export, then check again.`
+      : `Within the ${threshold}-hour freshness window: the newest export landed ${age} hours ago.`)
+      + readNote,
+  };
 }
 
 // ---- Intraday (hourly) ----------------------------------------------------
@@ -640,10 +828,9 @@ export async function getHealthMetrics({ metric, start, end, aggregation, granul
   }
 
   const metrics = await loadMetrics();
+  let resolvedFrom = null;
+  if (metric) ({ name: metric, resolvedFrom } = resolveMetricName(metrics, metric));
   const names = metric ? [metric] : Object.keys(metrics);
-  if (metric && !metrics[metric]) {
-    throw new Error(`unknown metric "${metric}". Use list_metrics to see available names.`);
-  }
   // Asking for every metric at once used to return every point of every metric. On a full history
   // that is tens of MB and blows any client's context window before the agent sees a single number.
   // Multi-metric calls get a proportionally smaller per-metric budget so the whole answer stays
@@ -670,6 +857,7 @@ export async function getHealthMetrics({ metric, start, end, aggregation, granul
     const gran = resolveGranularity(points.length, granularity, perMetric);
     const rolled = rollUp(points, gran, !!m.cumulative);
     out[name] = {
+      ...(resolvedFrom && { resolvedFrom }),
       ...(_excludeDays && { excludedDays }),
       unit: m.unit || '',
       cumulative: !!m.cumulative,
@@ -734,8 +922,9 @@ export async function getTrends({ metric, window = 7, excludeTravelDays } = {}) 
   window = Math.floor(Number(window));
   if (!(window >= 1)) throw new Error(`window must be at least 1 whole day (got ${arguments[0].window})`);
   const metrics = await loadMetrics();
+  let resolvedFrom;
+  ({ name: metric, resolvedFrom } = resolveMetricName(metrics, metric));
   const m = metrics[metric];
-  if (!m) throw new Error(`unknown metric "${metric}"`);
   let daily = (m.daily || []).slice();
   // excludeTravelDays drops the days a timezone change landed on (health-days.json): those days
   // were not 24 hours long, so their totals are shortened or stretched by the clock itself, not by
@@ -802,6 +991,7 @@ export async function getTrends({ metric, window = 7, excludeTravelDays } = {}) 
     ? recomputeOf(metric, daily.filter((p2) => inSpan(p2, priorFrom, anchor)), spanStart, spanEnd)
     : null;
   return {
+    ...(resolvedFrom && { resolvedFrom }),
     ...(trendRc && { recompute: trendRc }),
     ...(bounds && bounds.length && {
       segmentBoundaries: bounds,
@@ -894,6 +1084,8 @@ export async function comparePeriods({ metric, periodA, periodB, anchor, exclude
     }
   }
   const exOpt = travel ? { _excludeDays: travel } : {};
+  let resolvedFrom;
+  ({ name: metric, resolvedFrom } = resolveMetricName(await loadMetrics(), metric));
   const a = await getHealthMetrics({ metric, start: periodA.start, end: periodA.end, ...exOpt });
   const b = await getHealthMetrics({ metric, start: periodB.start, end: periodB.end, ...exOpt });
   const av = a[metric]?.aggregate, bv = b[metric]?.aggregate;
@@ -920,6 +1112,7 @@ export async function comparePeriods({ metric, periodA, periodB, anchor, exclude
     .sort((x, y) => x.date.localeCompare(y.date));
   const travelA = a[metric]?.excludedDays ?? 0, travelB = b[metric]?.excludedDays ?? 0;
   return {
+    ...(resolvedFrom && { resolvedFrom }),
     metric, unit: a[metric]?.unit || '',
     // Per side, so an agent can see WHICH period contains rebuilt (or un-rebuilt) days.
     ...((a[metric]?.recompute || b[metric]?.recompute) && {
@@ -972,12 +1165,24 @@ export async function getStructuredExport({ metrics: names, start, end, granular
   // Unknown names are an ERROR here too. `.filter((n) => all[n])` dropped them silently, so an
   // agent that asked for three metrics and got two had no way to tell which was missing — or that
   // anything had been dropped. `get_health_metrics` has always thrown for the same mistake.
+  // Aliases resolve to their canonical name first (an exact name is untouched); two spellings of the
+  // same metric collapse to one entry rather than being served twice.
+  if (names != null && !Array.isArray(names)) throw new Error('metrics must be an array of metric names');
+  const resolutions = [];
   if (names && names.length) {
-    const unknown = names.filter((n) => !all[n]);
+    const unknown = [];
+    const resolved = [];
+    for (const n of names) {
+      if (all[n]) { resolved.push(n); continue; }
+      const r = norm.resolvePresent(all, n);
+      if (r.name) { resolved.push(r.name); resolutions.push(r.resolved); }
+      else unknown.push(r.reason ? `"${n}" (${r.reason})` : `"${n}"`);
+    }
     if (unknown.length) {
       throw new Error(`unknown metric${unknown.length > 1 ? 's' : ''} ` +
-        `${unknown.map((n) => `"${n}"`).join(', ')}. Use list_metrics to see available names.`);
+        `${unknown.join(', ')}. Use list_metrics to see available names, or resolve_metric to look a name up.`);
     }
+    names = [...new Set(resolved)];
   }
   const pick = (names && names.length ? names : Object.keys(all)).filter((n) => all[n]).sort();
   const cap = Math.min(Number(limit) > 0 ? Number(limit) : DEFAULT_LIMIT, MAX_LIMIT);
@@ -1048,6 +1253,7 @@ export async function getStructuredExport({ metrics: names, start, end, granular
     metrics: data,
     returnedMetrics: Object.keys(data).length,
     totalMetrics: pick.length,
+    ...(resolutions.length && { resolvedFrom: resolutions }),
     nextCursor,
     note: nextCursor
       ? `Returned ${Object.keys(data).length} of ${pick.length} metrics. Call again with cursor:"${nextCursor}" for the next page.`
@@ -1129,6 +1335,80 @@ export async function getWorkouts({ activityType, start, end, limit, cursor } = 
   };
 }
 
+// ---- Canonical naming and units (resolve_metric) ----------------------------
+
+/**
+ * Look a metric name up in the canonical naming and unit table: which canonical metric a spelling
+ * means, its unit (and how each known unit variant converts into it), whether this export holds it,
+ * and, given {value, unit}, that value in the canonical unit. Read-only and never adjusts stored
+ * data. The table itself is static, so it answers while pairing is locked; only the "is it in this
+ * export" part needs the export, and is reported as unknown (null) when locked.
+ */
+export async function resolveMetric({ name, value, unit } = {}) {
+  if (name == null || String(name).trim() === '') throw new Error('name is required, e.g. "steps", "StepCount" or "Body Weight"');
+  if ((value == null) !== (unit == null)) throw new Error('pass value and unit together to convert a value, or neither');
+  const requested = String(name);
+  const unlocked = pairing().ok;
+  const present = unlocked ? await loadMetrics() : null;
+  const inExport = (id) => (present ? !!present[id] : null);
+  const lockedNote = unlocked ? undefined : 'Pairing is locked, so whether each metric is in this export is unknown (null). The naming and unit table itself does not depend on your data.';
+  const r = norm.lookup(requested);
+  // A name the export holds but the catalog does not (an older or newer app's metric) is still a
+  // real metric: report it as present with its stored unit rather than "unknown".
+  // The exact stored name always wins, exactly as it does in the data tools.
+  if (present && present[requested] && !norm.CANONICAL[requested]) {
+    const m = present[requested];
+    return {
+      requested, resolved: true, metric: requested, matchedBy: 'exact', inCatalog: false,
+      unit: m.unit || '', cumulative: !!m.cumulative, inExport: true, coverage: coverageOf(m),
+      note: 'This metric is in the export under exactly this name but is not in this server\'s canonical table (the export may come from a newer app or another tool), so no aliases or unit variants are listed for it.'
+        + (r.status === 'resolved' ? ` The table maps this spelling to "${r.metric}", which is a separate entry; the data tools use the exact name "${requested}".` : ''),
+      sourceMerge: norm.SOURCE_MERGE,
+    };
+  }
+  if (r.status !== 'resolved') {
+    const base = { requested, resolved: false, status: r.status };
+    if (r.status === 'ambiguous') {
+      return {
+        ...base,
+        candidates: r.candidates.map((id) => ({ metric: id, title: norm.CANONICAL[id].title, unit: norm.CANONICAL[id].unit, inExport: inExport(id) })),
+        note: `"${requested}" names more than one metric. Pick one candidate explicitly; nothing was chosen for you.`,
+        ...(lockedNote && { lockedNote }),
+      };
+    }
+    if (r.status === 'not_equivalent') {
+      return { ...base, nearest: r.nearest, inExport: inExport(r.nearest), note: r.reason, ...(lockedNote && { lockedNote }) };
+    }
+    const key = norm.nameKey(requested);
+    const suggestions = key.length >= 3
+      ? Object.keys(norm.CANONICAL).filter((id) => id.includes(key) || key.includes(id)).slice(0, 8)
+      : [];
+    return { ...base, ...(suggestions.length && { suggestions }), note: 'No metric in the canonical table matches this name. Call list_metrics to see what this export holds.', ...(lockedNote && { lockedNote }) };
+  }
+  const row = norm.CANONICAL[r.metric];
+  const pct = row.unit === '%';
+  const out = {
+    requested, resolved: true, metric: row.id,
+    matchedBy: requested === row.id ? 'exact' : r.matchedBy,
+    title: row.title, healthkitIdentifier: row.hk || null, group: row.group,
+    ...(!row.hk && { derived: 'Computed by the iOS app at export time rather than read from one HealthKit type.' }),
+    unit: row.unit,
+    ...(pct && { unitScale: 'fraction', unitNote: 'Stored as a 0 to 1 fraction (0.97 means 97 percent). Do not multiply by 100 again.' }),
+    cumulative: row.cumulative,
+    unitVariants: norm.unitVariantsFor(row.id),
+    inExport: inExport(row.id),
+    ...(present && present[row.id] && { coverage: coverageOf(present[row.id]) }),
+    ...(present && present[row.id] && (present[row.id].unit || '') !== row.unit && {
+      unitMismatch: `The export stores this metric in "${present[row.id].unit || ''}", not the canonical "${row.unit}". Values are served exactly as stored; nothing was converted.`,
+    }),
+    ...(row.id === 'heart_rate_variability' && { measureNote: 'SDNN in milliseconds, as Apple Health records it. Not comparable with RMSSD values from other devices.' }),
+    sourceMerge: norm.SOURCE_MERGE,
+    ...(lockedNote && { lockedNote }),
+  };
+  if (value != null) out.conversion = { input: { value, unit: String(unit) }, ...norm.convertToCanonical(row.id, value, unit) };
+  return out;
+}
+
 // ---- Cross-metric correlation ----------------------------------------------
 
 export async function correlateMetrics({ metricA, metricB, lag = 0, start, end } = {}) {
@@ -1142,9 +1422,9 @@ export async function correlateMetrics({ metricA, metricB, lag = 0, start, end }
     throw new Error(`lag must be an integer between 0 and 3 (got ${JSON.stringify(lag)}). lag 1 pairs metricA on day d with metricB on the following day.`);
   }
   const metrics = await loadMetrics();
-  for (const [label, name] of [['metricA', metricA], ['metricB', metricB]]) {
-    if (!metrics[name]) throw new Error(`unknown ${label} "${name}". Use list_metrics to see available names.`);
-  }
+  const resA = resolveMetricName(metrics, metricA, 'metricA');
+  const resB = resolveMetricName(metrics, metricB, 'metricB');
+  metricA = resA.name; metricB = resB.name;
   const aPts = (metrics[metricA].daily || []).filter((p) => inRange(p.d, start, end));
   const bByDay = new Map((metrics[metricB].daily || []).map((p) => [p.d, p.v]));
   // Alignment: A's day d pairs with B's day d+lag. The range bounds apply to A's days; B's partner
@@ -1173,8 +1453,8 @@ export async function correlateMetrics({ metricA, metricB, lag = 0, start, end }
     }
   }
   return {
-    metricA: { name: metricA, unit: metrics[metricA].unit || '', mean: meanOf(0) },
-    metricB: { name: metricB, unit: metrics[metricB].unit || '', mean: meanOf(1) },
+    metricA: { name: metricA, unit: metrics[metricA].unit || '', mean: meanOf(0), ...(resA.resolvedFrom && { resolvedFrom: resA.resolvedFrom }) },
+    metricB: { name: metricB, unit: metrics[metricB].unit || '', mean: meanOf(1), ...(resB.resolvedFrom && { resolvedFrom: resB.resolvedFrom }) },
     lag: lagN,
     alignedPairs: n,
     r,

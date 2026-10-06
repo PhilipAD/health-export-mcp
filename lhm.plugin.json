@@ -1,7 +1,7 @@
 {
   "identifier": "philipad-health-export-mcp",
   "name": "health-export-mcp",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "author": "Philip D'Souza",
   "authorUrl": "https://github.com/PhilipAD",
   "category": "health-wellness",
@@ -27,6 +27,21 @@
       "inputSchema": {
         "type": "object",
         "properties": {}
+      }
+    },
+    {
+      "name": "get_freshness",
+      "description": "How current the exported files are, so you can decide whether to trust what you read or ask the user to refresh. Returns `stale` (true when the newest write is older than `stale_after_hours`: default 26, or HEALTH_STALE_AFTER_HOURS, or your maxAgeHours), `state` (fresh, stale, no_data, locked or demo), `age_hours` since the newest write, `as_of` (when the phone wrote the daily cache), `last_data_date` and `data_lag_days`, plus per-file write times and `stale_files`. Same rule as the `status --max-age` cron gate. Cheap: call it again before a long analysis.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "maxAgeHours": {
+            "type": "number",
+            "exclusiveMinimum": 0,
+            "maximum": 8760,
+            "description": "Treat the data as stale when the newest write is older than this many hours (greater than 0, at most 8760). Default 26, or HEALTH_STALE_AFTER_HOURS when set."
+          }
+        }
       }
     },
     {
@@ -312,6 +327,30 @@
         "required": [
           "metricA",
           "metricB"
+        ]
+      }
+    },
+    {
+      "name": "resolve_metric",
+      "description": "Look a metric name up in the canonical naming and unit table. Accepts the export's own name (step_count), a HealthKit identifier (StepCount, HKQuantityTypeIdentifierStepCount), a display title (Step Count) or a common alias (steps, hrv, spo2, weight) and returns the canonical metric, its unit (percentages are 0 to 1 fractions), the unit variants other apps use with the exact formula into the canonical unit, and whether this export holds it. Pass {value, unit} to convert one value, e.g. 180 lb to kg. A word naming several metrics (distance, calories) comes back ambiguous with candidates, and a different measure (RMSSD vs the SDNN that Apple Health stores) is refused with the reason: nothing is guessed. get_health_metrics, get_trends, compare_periods, get_structured_export and correlate_metrics accept the same aliases and report `resolvedFrom` when they used one; other tools take the export's own names. The export holds one value per metric per day, already merged across sources by Apple Health, so this tool states that per-source disagreement cannot be seen in the file rather than inventing it.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": "string",
+            "description": "Any spelling of a metric, e.g. steps, StepCount, Body Weight, VO2 max."
+          },
+          "value": {
+            "type": "number",
+            "description": "Optional value to convert into the canonical unit. Pass with unit."
+          },
+          "unit": {
+            "type": "string",
+            "description": "Unit of value, e.g. lb, mmol/L, degF, km, %. Unknown units are refused, never guessed."
+          }
+        },
+        "required": [
+          "name"
         ]
       }
     }

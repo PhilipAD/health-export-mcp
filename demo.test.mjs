@@ -41,7 +41,7 @@ function client(args, env) {
   return { req, call, kill: () => proc.kill() };
 }
 
-// Arguments that make each of the 14 tools return a real (non-error) answer against the demo set.
+// Arguments that make each of the 16 tools return a real (non-error) answer against the demo set.
 const CALLS = [
   ['get_mcp_status', {}],
   ['list_metrics', {}],
@@ -57,6 +57,8 @@ const CALLS = [
   ['get_sleep_sessions', { start: '2026-08-01' }],
   ['get_cycle_context', {}],
   ['correlate_metrics', { metricA: 'step_count', metricB: 'sleep_analysis', lag: 1 }],
+  ['get_freshness', {}],
+  ['resolve_metric', { name: 'hrv' }],
 ];
 
 test('demo mode: every tool answers with demo:true and the [SYNTHETIC DEMO DATA] text prefix', async () => {

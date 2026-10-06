@@ -187,3 +187,102 @@ percentage metrics are 0..1 fractions.
   `demo: true` and every text answer prefixed `[SYNTHETIC DEMO DATA]`.
 - CLI: `--doctor` (diagnostics), `status --max-age <hours>` (freshness gate, exit code for cron),
   `receive` (standalone receiver, localhost bind by default).
+- 1.6.0: `get_freshness` (stale flag against `HEALTH_STALE_AFTER_HOURS`, default 26 h, or `maxAgeHours`;
+  same rule as `status --max-age`) and `get_mcp_status.freshness`; `resolve_metric` plus alias
+  resolution (`resolvedFrom`) in the data tools, from the canonical naming and unit table
+  (`normalize.mjs`, generated `metric-catalog.mjs`). No file format changed.
+
+## 9. Late-arrival recompute provenance (daily cache schema 1, MINOR 1) (2026-10-02, PR #14)
+
+Why: the daily automation re-reads only the trailing days (today and the two before it; seven
+after a timezone move). Apps that write samples into Apple Health long after the moment they
+describe (a scale or toothbrush syncing after a gap, a back-logged entry, a resting heart rate
+written hours later) left those older days stale in the cache for ever. The app now detects added
+and deleted samples with `HKAnchoredObjectQuery` (HealthKit exposes no write date on a sample; the
+anchor is the supported "changed since" mechanism), RE-READS every affected local day from
+HealthKit statistics (the value is replaced, never appended to), and records provenance here.
+
+Versioning: `_meta.schema` stays **1** (every addition is optional, so a schema-1 reader keeps
+working and must not refuse the file). `_meta.schemaMinor: 1` declares that the writer knows this
+section. A cache without `schemaMinor` was written before it: no day carries `r`, and past days are
+only as fresh as the run that last covered them.
+
+Per point, inside `daily`:
+
+```json
+{ "d": "2026-09-20", "v": 1250, "r": "2026-10-02T08:15:00Z" }
+```
+
+- `r` (optional): ISO 8601 UTC instant at which this past day was rebuilt because samples arrived
+  late or were deleted. ABSENT on every untouched day. Survives later ordinary merges of the same day
+  (the rebuild still happened); replaced by a newer rebuild.
+- Readers that do not know `r` ignore it (it sits beside `d` and `v`).
+
+In `_meta`:
+
+```json
+"_meta": {
+  "schema": 1, "schemaMinor": 1, "app": "1.9", "writtenAt": "...",
+  "recompute": {
+    "capDays": 90,
+    "lastRebuiltAt": "2026-10-02T08:15:00Z",
+    "lastRebuiltDays": 3,
+    "lastRebuiltMetrics": ["step_count", "weight_body_mass"],
+    "capped": {
+      "weight_body_mass": {
+        "at": "2026-10-02T08:15:00Z",
+        "reason": "late_samples",
+        "oldest": "2025-01-10", "newest": "2025-03-01", "lastDays": 4,
+        "uncheckedBefore": "2026-07-04"
+      }
+    }
+  }
+}
+```
+
+- `capDays`: how far back one run rebuilds. Older affected days are NOT rebuilt (a multi-year bulk
+  write must not turn a background wake into a years-long recompute); instead:
+- `capped[metric]`: the explicit marker. `reason` is `late_samples` (with the affected date range
+  `oldest`..`newest`, widened across runs, and `lastDays` from the most recent detection) or
+  `deleted_samples` (HealthKit does not reveal a deleted sample's dates, so only
+  `uncheckedBefore` is known: days before it were not re-checked; recorded only when the metric has
+  stored days before it; nothing can resolve a dateless marker, so it EXPIRES 30 days after `at`,
+  in the app on its next write and in the server when reading). Carried forward on every write. A clean full-history export clears the
+  `late_samples` markers set before it started; `deleted_samples` markers stay, because that walk
+  merges without a prune and cannot remove a fully deleted day. Purging a metric drops its marker.
+- `lastRebuilt*`: the most recent run that rebuilt at least one day.
+
+Writer rules (iOS app, `Sources/BackfillRecompute.swift`):
+- Day keys are LOCAL calendar days, the same bucketing as `daily[].d` and the statistics query.
+- A day inside the trailing window is never treated as late (that window is re-read anyway).
+- Deletions and anchor loss (first run, reinstall, restore onto another phone, unreadable anchor)
+  re-read the whole capped window once and stamp only days whose value actually changed; they never
+  extend a metric's history backwards past its oldest stored day. No re-read rewrites a day
+  bucketed in an earlier time zone (from the timezone log, contract section 5) unless late samples
+  were detected on that very day.
+- The window's oldest day stays eligible for a detected late sample (detection runs after the
+  window read; this closes the race between the two reads at no cost when nothing moved).
+- A stored day is REMOVED only when HealthKit reported deletions for that metric. An empty re-read
+  (revoked read permission, a new phone still syncing Health) changes nothing.
+- Sleep is filed under the waking day, so a late pre-midnight segment also dirties the next day.
+- Anchors advance only after the rebuilt days reached every destination that carries them (iCloud,
+  folder, local network), so a failed write loses nothing. They are bound to a backup-excluded
+  install token, so a backup restore re-bootstraps instead of trusting another store's position.
+- No network: every read is a local HealthKit query.
+- Local-network (receiver) destination: only the detected late-sample days are pushed, with `r`; the
+  receiver keeps a valid ISO `r` and cannot prune, so deletions reach the iCloud and folder caches only.
+- Webhook destination: receives the window envelope only, never rebuilt days. A receiver that missed
+  days uses Settings > Resend past days instead (section 10).
+
+Reader surfaces (MCP server, `mcp/healthstore.mjs`):
+- `get_health_metrics` (day granularity): each point may carry `recomputed_at`; rolled-up buckets
+  carry `backfilled_days` (how many of their days were rebuilt). Per metric, a `recompute` block
+  `{backfilled_days, recomputed_at, rebuiltDays, capped?, note}` appears only when the range holds
+  rebuilt days or reaches back before an applicable `capped.uncheckedBefore` (a `deleted_samples`
+  marker only when the caller passed an explicit `start` before it).
+- `get_structured_export`: per-day `r` passes through; same per-metric `recompute` block.
+- `get_trends`: `recompute` over the compared span; `compare_periods`: `recompute.periodA` /
+  `recompute.periodB`, so an agent sees which side holds rebuilt days.
+- `get_mcp_status`: `recompute: {supported, capDays, recomputed_at, lastRebuiltDays,
+  backfilled_days, metricsWithRebuiltDays, capped[], cappedNote}`.
+- Notes are plain mechanics (no judgement about the values, no dashes).
