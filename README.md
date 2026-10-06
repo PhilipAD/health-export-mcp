@@ -16,7 +16,7 @@
 </p>
 
 <p align="center">
-  <img src="assets/architecture.svg" alt="Apple Health exports to iCloud, a folder, or your LAN; health-export-mcp reads it and serves 14 query tools to your AI agent" width="100%" />
+  <img src="assets/architecture.svg" alt="Apple Health exports to iCloud, a folder, or your LAN; health-export-mcp reads it and serves 16 query tools to your AI agent" width="100%" />
 </p>
 
 > Ask your agent: *"Compare my HRV this week vs last week and tell me if I'm recovering."*, it calls the tools and answers from your **actual numbers**.
@@ -109,13 +109,14 @@ Restart the client and try:
 
 ---
 
-## The 14 MCP tools
+## The 16 MCP tools
 
 Full reference with request/response examples: **[healthexport.dev/mcp](https://www.healthexport.dev/mcp/#tools)**.
 
 | Tool | What it does |
 |---|---|
-| `get_mcp_status` | Health check: source, metric/workout counts, which context files exist, latest data date. **Call first.** |
+| `get_mcp_status` | Health check: source, metric/workout counts, which context files exist, latest data date, and a `freshness` summary. **Call first.** |
+| `get_freshness` | How current the export is: `stale` against a stated threshold (26 h by default, `HEALTH_STALE_AFTER_HOURS`, or `maxAgeHours`), `age_hours`, `as_of`, `last_data_date`, per-file write times. Same rule as the `status --max-age` cron gate. |
 | `list_metrics` | Every available metric with unit, day count, and date range. |
 | `get_health_metrics` | Daily values for a metric (or all) over a date range + an aggregate (avg/sum/min/max/latest). Supports `filterDays` (restrict to days covered by logged events, with `negate`). |
 | `get_trends` | Recent N-day window vs the prior N days: change, % change, direction. Supports `excludeTravelDays`. |
@@ -129,6 +130,7 @@ Full reference with request/response examples: **[healthexport.dev/mcp](https://
 | `get_sleep_sessions` | Clustered sleep sessions attributed to the waking day; split nights returned as-is. |
 | `get_cycle_context` | Day-in-cycle and coarse phase derived from logged period starts. Never predictive. |
 | `correlate_metrics` | Pearson correlation between two metrics with a 0..3 day lag. Association, not causation, always stated. |
+| `resolve_metric` | Canonical name and unit for any spelling (`steps`, `StepCount`, `Body Weight`, `hrv`), unit variants with exact formulas, an optional `{value, unit}` conversion, and whether the export holds it. Ambiguous words come back with candidates, never guessed. The data tools accept the same aliases and report `resolvedFrom`. |
 
 **Coverage:** 190 Apple Health metrics across activity, heart, HRV, mobility, respiratory, body, sleep, hearing, and nutrition, plus workouts. Data answers carry honest `coverage` blocks, and single-metric answers list logged events inside the window as `segmentBoundaries` so an average across a medication start or life change cannot masquerade as one regime.
 
@@ -316,7 +318,7 @@ stdio transport (newline-delimited JSON-RPC 2.0), the universal MCP transport. O
 
 ## How it works
 
-The iOS app reads Apple Health (read-only) and writes a compact `.health-cache.json` (plus optional context files) to the destination you choose. This server reads those files and exposes the 14 tools above over MCP. No bridge, no Docker, no database: just files and stdio.
+The iOS app reads Apple Health (read-only) and writes a compact `.health-cache.json` (plus optional context files) to the destination you choose. This server reads those files and exposes the 16 tools above over MCP. No bridge, no Docker, no database: just files and stdio.
 
 ```
 Apple Health → MetricBridge (iOS) → .health-cache.json → health-export-mcp → MCP client → you

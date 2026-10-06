@@ -2,9 +2,9 @@
   "manifest_version": "0.3",
   "name": "health-export-ai",
   "display_name": "MetricBridge",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Query your Apple Health data, exported by the MetricBridge iOS app to iCloud Drive, from any MCP agent. Local-first, read-only, zero dependencies.",
-  "long_description": "A zero-dependency MCP server that exposes 190 Apple Health metrics (exported by the MetricBridge iOS app into an iCloud Drive folder) to any MCP-compatible agent: Claude Desktop, opencode, Cursor, OpenClaw, Hermes. No bridge, no Docker, no HTTP receiver: the server reads the synced cache file directly over stdio. 14 tools: get_mcp_status, list_metrics, get_health_metrics, get_trends, compare_periods, get_structured_export, get_intraday, query_health_data, list_events, get_profile, get_workouts, get_sleep_sessions, get_cycle_context, correlate_metrics. Plus 22 MCP prompts and a --demo mode with a synthetic dataset. Get the companion iOS app on the App Store: https://apps.apple.com/app/id6784185201",
+  "long_description": "A zero-dependency MCP server that exposes 190 Apple Health metrics (exported by the MetricBridge iOS app into an iCloud Drive folder) to any MCP-compatible agent: Claude Desktop, opencode, Cursor, OpenClaw, Hermes. No bridge, no Docker, no HTTP receiver: the server reads the synced cache file directly over stdio. 16 tools: get_mcp_status, get_freshness, list_metrics, get_health_metrics, get_trends, compare_periods, get_structured_export, get_intraday, query_health_data, list_events, get_profile, get_workouts, get_sleep_sessions, get_cycle_context, correlate_metrics, resolve_metric. Plus 22 MCP prompts and a --demo mode with a synthetic dataset. Get the companion iOS app on the App Store: https://apps.apple.com/app/id6784185201",
   "author": {
     "name": "PhilipAD",
     "url": "https://github.com/PhilipAD"
@@ -41,7 +41,11 @@
   "tools": [
     {
       "name": "get_mcp_status",
-      "description": "Health check: source, metric/workout counts, latest data date. Call first."
+      "description": "Health check: source, metric/workout counts, latest data date, freshness. Call first."
+    },
+    {
+      "name": "get_freshness",
+      "description": "How current the export is: stale flag against a documented threshold (default 26 hours), age since the newest write, as_of, last data date, per-file write times."
     },
     {
       "name": "list_metrics",
@@ -94,6 +98,10 @@
     {
       "name": "correlate_metrics",
       "description": "Pearson correlation between two metrics with 0..3 day lag; association, not causation."
+    },
+    {
+      "name": "resolve_metric",
+      "description": "Canonical metric name and unit for any spelling or alias, with unit conversion; ambiguous names are never guessed."
     }
   ],
   "user_config": {

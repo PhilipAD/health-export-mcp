@@ -11,7 +11,9 @@ rm -f "$OUT"
 # events/prompts/demo are hard imports of server.mjs since 1.4: omitting any of them makes the
 # bundled server crash on startup with a module-not-found error.
 # envelope.mjs (encrypted exports) is a hard import of healthstore.mjs and receiver.mjs since 1.5.
-zip -j "$OUT" manifest.json server.mjs healthstore.mjs receiver.mjs events.mjs prompts.mjs demo.mjs envelope.mjs >/dev/null
+# normalize.mjs + metric-catalog.mjs (canonical naming and unit table) are hard imports of
+# healthstore.mjs since the cross-source normalisation slice.
+zip -j "$OUT" manifest.json server.mjs healthstore.mjs receiver.mjs events.mjs prompts.mjs demo.mjs envelope.mjs normalize.mjs metric-catalog.mjs >/dev/null
 echo "built $OUT ($(du -h "$OUT" | cut -f1)) — contents:"
 unzip -l "$OUT" | awk 'NR>3 && $4 {print "  " $4}' | grep -v '^\s*$' | head
 echo "install: drag $OUT into Claude Desktop → Settings → Extensions"

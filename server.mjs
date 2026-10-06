@@ -21,7 +21,7 @@ import * as ev from './events.mjs';
 import { PROMPTS } from './prompts.mjs';
 import { DEMO } from './demo.mjs';
 
-const SERVER = { name: 'health-export-ai', version: '1.5.0' };
+const SERVER = { name: 'health-export-ai', version: '1.6.0' };
 const DEFAULT_PROTOCOL = '2025-06-18';
 const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
 
@@ -60,6 +60,17 @@ const TOOLS = [
     description: 'Health check: data source, how many metrics/workouts are available, which optional context files exist, the most recent data date, and a `recompute` summary of past days rebuilt after late-arriving samples (with any days too old to rebuild). Call this first to confirm the bridge is connected.',
     inputSchema: { type: 'object', properties: {} },
     handler: () => store.status(),
+  },
+  {
+    name: 'get_freshness',
+    description: `How current the exported files are, so you can decide whether to trust what you read or ask the user to refresh. Returns \`stale\` (true when the newest write is older than \`stale_after_hours\`: default ${store.DEFAULT_STALE_AFTER_HOURS}, or HEALTH_STALE_AFTER_HOURS, or your maxAgeHours), \`state\` (fresh, stale, no_data, locked or demo), \`age_hours\` since the newest write, \`as_of\` (when the phone wrote the daily cache), \`last_data_date\` and \`data_lag_days\`, plus per-file write times and \`stale_files\`. Same rule as the \`status --max-age\` cron gate. Cheap: call it again before a long analysis.`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        maxAgeHours: { type: 'number', exclusiveMinimum: 0, maximum: 8760, description: `Treat the data as stale when the newest write is older than this many hours (greater than 0, at most 8760). Default ${store.DEFAULT_STALE_AFTER_HOURS}, or HEALTH_STALE_AFTER_HOURS when set.` },
+      },
+    },
+    handler: (a) => store.freshness({ maxAgeHours: a.maxAgeHours }),
   },
   {
     name: 'list_metrics',
@@ -230,6 +241,21 @@ const TOOLS = [
     },
     handler: (a) => store.correlateMetrics(a),
   },
+  // ---- canonical naming and units (cross-source normalisation, first slice) ----
+  {
+    name: 'resolve_metric',
+    description: "Look a metric name up in the canonical naming and unit table. Accepts the export's own name (step_count), a HealthKit identifier (StepCount, HKQuantityTypeIdentifierStepCount), a display title (Step Count) or a common alias (steps, hrv, spo2, weight) and returns the canonical metric, its unit (percentages are 0 to 1 fractions), the unit variants other apps use with the exact formula into the canonical unit, and whether this export holds it. Pass {value, unit} to convert one value, e.g. 180 lb to kg. A word naming several metrics (distance, calories) comes back ambiguous with candidates, and a different measure (RMSSD vs the SDNN that Apple Health stores) is refused with the reason: nothing is guessed. get_health_metrics, get_trends, compare_periods, get_structured_export and correlate_metrics accept the same aliases and report `resolvedFrom` when they used one; other tools take the export's own names. The export holds one value per metric per day, already merged across sources by Apple Health, so this tool states that per-source disagreement cannot be seen in the file rather than inventing it.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        name: { type: 'string', description: 'Any spelling of a metric, e.g. steps, StepCount, Body Weight, VO2 max.' },
+        value: { type: 'number', description: 'Optional value to convert into the canonical unit. Pass with unit.' },
+        unit: { type: 'string', description: 'Unit of value, e.g. lb, mmol/L, degF, km, %. Unknown units are refused, never guessed.' },
+      },
+      required: ['name'],
+    },
+    handler: (a) => store.resolveMetric(a),
+  },
 ];
 const TOOL_MAP = Object.fromEntries(TOOLS.map((t) => [t.name, t]));
 
@@ -248,7 +274,7 @@ async function handle(msg) {
         protocolVersion: params?.protocolVersion || DEFAULT_PROTOCOL,
         capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } },
         serverInfo: SERVER,
-        instructions: 'Apple Health export bridge. Call get_mcp_status, then list_metrics, then the data tools (get_health_metrics, get_trends, compare_periods, get_structured_export, get_workouts, correlate_metrics). The context tools (list_events, get_profile, get_sleep_sessions, get_cycle_context) read optional files: absence is reported explicitly, never read as "no data". prompts/list serves ready-made analysis prompts.',
+        instructions: 'Apple Health export bridge. Call get_mcp_status (its `freshness` block says whether the export is stale; get_freshness has the detail), then list_metrics, then the data tools (get_health_metrics, get_trends, compare_periods, get_structured_export, get_workouts, correlate_metrics). The context tools (list_events, get_profile, get_sleep_sessions, get_cycle_context) read optional files: absence is reported explicitly, never read as "no data". prompts/list serves ready-made analysis prompts.',
       });
 
     case 'notifications/initialized':
@@ -352,18 +378,9 @@ async function handle(msg) {
 
 // ---- CLI (runs INSTEAD of the protocol loop; stdout is safe to print to) ----
 
-// The complete file family one export can produce. Doctor and the freshness gate look at all of
-// them, because "the cache is fresh but events are three weeks stale" is a real state worth seeing.
-const DATA_FILES = [
-  '.health-cache.json',
-  '.health-workouts-cache.json',
-  'health-intraday.json',
-  'health-events.json',
-  'health-profile.json',
-  'health-sessions.json',
-  'health-cycles.json',
-  'health-days.json',
-];
+// The complete file family one export can produce lives in healthstore.mjs (DATA_FILES), so doctor,
+// the cron gate below and the get_freshness tool all look at exactly the same files.
+const { DATA_FILES } = store;
 
 function statFile(name) {
   try {
@@ -393,7 +410,8 @@ Environment:
   HEALTH_LISTEN=1            also accept LAN pushes inside the MCP process (see receiver.mjs)
   HEALTH_LISTEN_HOST/PORT    receiver bind address (default 127.0.0.1:27184) and port
   HEALTH_LISTEN_TOKEN        receiver auth token, MANDATORY on a non-loopback bind
-  HEALTH_MAX_RESULT_CHARS    per-answer wire budget (default 100000)`);
+  HEALTH_MAX_RESULT_CHARS    per-answer wire budget (default 100000)
+  HEALTH_STALE_AFTER_HOURS   hours after which get_freshness reports stale (default ${store.DEFAULT_STALE_AFTER_HOURS})`);
 }
 
 async function doctor() {
@@ -448,21 +466,19 @@ function statusCommand(argv) {
     console.log('usage: node server.mjs status --max-age <hours>');
     process.exit(2);
   }
-  let newest = null;
-  for (const name of DATA_FILES) {
-    const st = statFile(name);
-    if (st && (!newest || st.mtimeMs > newest.mtimeMs)) newest = { name, mtimeMs: st.mtimeMs };
-  }
+  // store.newestWrite() is the same helper get_freshness decides `stale` with, so the exit code
+  // and the tool answer cannot drift apart.
+  const newest = store.newestWrite();
   if (!newest) {
     console.log(`stale: no data files found in ${store.dataPath('')}`);
     process.exit(1);
   }
   const age = (Date.now() - newest.mtimeMs) / 3600000;
   if (age <= hours) {
-    console.log(`fresh: newest write ${age.toFixed(1)}h ago (${newest.name}), within --max-age ${hours}h`);
+    console.log(`fresh: newest write ${age.toFixed(1)}h ago (${newest.file}), within --max-age ${hours}h`);
     process.exit(0);
   }
-  console.log(`stale: newest write ${age.toFixed(1)}h ago (${newest.name}) exceeds --max-age ${hours}h`);
+  console.log(`stale: newest write ${age.toFixed(1)}h ago (${newest.file}) exceeds --max-age ${hours}h`);
   process.exit(1);
 }
 

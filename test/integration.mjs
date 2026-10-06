@@ -107,10 +107,11 @@ async function main() {
   const tl = await c.req('tools/list');
   const tools = tl.result?.tools || [];
   const names = tools.map((t) => t.name);
-  ok(names.length === 14, `tools/list → ${names.length} tools (expected 14)`);
+  ok(names.length === 16, `tools/list → ${names.length} tools (expected 16)`);
   for (const t of ['get_mcp_status', 'list_metrics', 'get_health_metrics', 'get_trends', 'compare_periods',
     'get_structured_export', 'get_intraday', 'query_health_data',
-    'list_events', 'get_profile', 'get_workouts', 'get_sleep_sessions', 'get_cycle_context', 'correlate_metrics'])
+    'list_events', 'get_profile', 'get_workouts', 'get_sleep_sessions', 'get_cycle_context', 'correlate_metrics',
+    'get_freshness', 'resolve_metric'])
     ok(names.includes(t), `tool present: ${t}`);
   ok(tools.every((t) => t.annotations?.readOnlyHint === true && t.annotations?.idempotentHint === true && t.annotations?.openWorldHint === false),
     'every tool carries readOnly/idempotent/closed-world annotations');
@@ -175,7 +176,15 @@ async function main() {
   ok(co.data?.alignedPairs === 13 && /Association, not causation/.test(co.data?.caveat || ''),
     `correlate_metrics(lag 1) → ${co.data?.alignedPairs} pairs, caveat present`);
 
-  ok(calls.length === 14, `exercised ${calls.length} tools (one call each)`);
+  const fr = await track('get_freshness', {});
+  ok(['fresh', 'stale'].includes(fr.data?.state) && typeof fr.data?.stale === 'boolean' && fr.data?.last_data_date,
+    `get_freshness → ${fr.data?.state}, last data ${fr.data?.last_data_date}`);
+
+  const rm = await track('resolve_metric', { name: 'steps' });
+  ok(rm.data?.resolved === true && rm.data.metric === 'step_count' && rm.data.inExport === true,
+    `resolve_metric(steps) → ${rm.data?.metric} (in export: ${rm.data?.inExport})`);
+
+  ok(calls.length === 16, `exercised ${calls.length} tools (one call each)`);
   const oversized = calls.filter(([, r]) => (r.text.length * 2) > BUDGET);
   ok(oversized.length === 0, `every answer within the ${BUDGET}-char wire budget${oversized.length ? ` (over: ${oversized.map(([n]) => n).join(', ')})` : ''}`);
 
