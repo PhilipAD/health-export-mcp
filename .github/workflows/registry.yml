@@ -1,0 +1,66 @@
+name: Publish to the MCP Registry
+
+# Publishes server.json to registry.modelcontextprotocol.io with GitHub OIDC: no stored secret.
+# The registry trusts this repository's OIDC identity for the io.github.PhilipAD/* namespace.
+# Runs when a GitHub release is published (after `npm publish`, since the registry verifies the
+# npm package's mcpName), or by hand for an existing tag.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Tag to publish (e.g. v1.6.0)"
+        required: true
+
+permissions:
+  contents: read
+  id-token: write   # GitHub OIDC token for `mcp-publisher login github-oidc`
+
+jobs:
+  publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+
+      - name: Versions agree with the tag
+        run: |
+          TAG="${{ github.event.release.tag_name || inputs.tag }}"
+          V="${TAG#v}"
+          node -e '
+            const v = process.argv[1], f = (p) => JSON.parse(require("fs").readFileSync(p, "utf8"));
+            const s = f("server.json"), p = f("package.json");
+            const bad = [["package.json", p.version], ["server.json", s.version], ...s.packages.map((x) => ["server.json packages", x.version])]
+              .filter(([, x]) => x !== v);
+            if (bad.length) { console.error("version mismatch with tag", v, bad); process.exit(1); }
+            if (p.mcpName !== s.name) { console.error("mcpName != server.json name"); process.exit(1); }
+          ' "$V"
+
+      - name: npm already serves this version
+        run: |
+          V="$(node -p 'require("./package.json").version')"
+          for i in $(seq 1 30); do
+            [ "$(npm view health-export-mcp@"$V" version 2>/dev/null)" = "$V" ] && exit 0
+            sleep 20
+          done
+          echo "::error::health-export-mcp@$V is not on npm yet; publish to npm first"; exit 1
+
+      - name: Install mcp-publisher
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
+            | tar xz mcp-publisher
+          ./mcp-publisher --version
+
+      - name: Log in with GitHub OIDC and publish
+        run: |
+          ./mcp-publisher login github-oidc
+          ./mcp-publisher publish
+
+      - name: Confirm the registry lists it
+        run: |
+          V="$(node -p 'require("./package.json").version')"
+          curl -fsS "https://registry.modelcontextprotocol.io/v0/servers?search=io.github.PhilipAD/health-export-mcp" \
+            | node -e 'let s="";process.stdin.on("data",d=>s+=d).on("end",()=>{const v=process.argv[1];const ok=JSON.parse(s).servers.some(x=>x.server.version===v);if(!ok){console.error("not listed",v);process.exit(1)}console.log("listed",v)})' "$V"
