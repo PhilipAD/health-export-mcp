@@ -1,0 +1,17 @@
+# Keeps the SHA-pinned actions in .github/workflows current: Dependabot bumps the commit SHA and
+# the trailing version comment together. The npm entry is a tripwire: this package has zero
+# dependencies, so it only produces a PR if one is ever added.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: ci
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    commit-message:
+      prefix: deps

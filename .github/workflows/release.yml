@@ -1,0 +1,97 @@
+name: Release (npm + SBOM)
+
+# Publishes the tagged version to npm with a provenance attestation, then attaches a CycloneDX SBOM
+# to the GitHub release.
+#
+# Authentication is npm trusted publishing (GitHub OIDC): there is NO npm token in this repository.
+# npmjs.com must list this repository and this workflow file name (release.yml) as a trusted
+# publisher for health-export-mcp, otherwise the publish step fails. See SECURITY.md.
+#
+# Safe to run for a version that is already on npm (for example one published by hand): the publish
+# step is skipped and only the SBOM is attached.
+#
+# Not done here: minisign signing. The signing key is deliberately not stored in GitHub. The
+# maintainer signs SHA256SUMS locally and uploads it with the release. See SECURITY.md.
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Existing release tag to publish (e.g. v1.6.1)"
+        required: true
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release-${{ github.event.release.tag_name || inputs.tag }}
+  cancel-in-progress: false
+
+jobs:
+  npm:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write   # attach the SBOM to the GitHub release
+      id-token: write   # GitHub OIDC token: npm trusted publishing and the provenance attestation
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+
+      # Trusted publishing needs Node >= 22.14.0 and npm >= 11.5.1.
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version: '24'
+          registry-url: 'https://registry.npmjs.org'
+
+      - name: npm supports trusted publishing
+        run: |
+          node -e '
+            const [a, b, c] = process.argv[1].split(".").map(Number);
+            const ok = a > 11 || (a === 11 && (b > 5 || (b === 5 && c >= 1)));
+            if (!ok) { console.error("npm " + process.argv[1] + " is older than 11.5.1"); process.exit(1); }
+            console.log("npm " + process.argv[1]);
+          ' "$(npm --version)"
+
+      - name: Versions agree with the tag
+        run: |
+          node -e '
+            const v = process.argv[1].replace(/^v/, ""), f = (p) => JSON.parse(require("fs").readFileSync(p, "utf8"));
+            const s = f("server.json"), p = f("package.json"), m = f("manifest.json");
+            const bad = [["package.json", p.version], ["server.json", s.version], ["manifest.json", m.version], ...s.packages.map((x) => ["server.json packages", x.version])]
+              .filter(([, x]) => x !== v);
+            if (bad.length) { console.error("version mismatch with tag", v, bad); process.exit(1); }
+          ' "$TAG"
+
+      - name: Tests
+        run: npm test
+
+      - name: Publish tarball contains only the server
+        run: npm run check:package
+
+      - name: Publish to npm with provenance
+        run: |
+          V="$(node -p 'require("./package.json").version')"
+          if [ "$(npm view "health-export-mcp@$V" version 2>/dev/null)" = "$V" ]; then
+            echo "::notice::health-export-mcp@$V is already on npm, skipping publish"
+            exit 0
+          fi
+          npm publish --provenance --access public
+
+      - name: Generate the CycloneDX SBOM
+        run: |
+          V="$(node -p 'require("./package.json").version')"
+          npm sbom --sbom-format cyclonedx > "$RUNNER_TEMP/health-export-mcp-$V.cdx.json"
+          node -e 'const b = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8")); if (b.bomFormat !== "CycloneDX") process.exit(1); console.log("SBOM", b.specVersion, b.metadata.component.purl)' "$RUNNER_TEMP/health-export-mcp-$V.cdx.json"
+
+      - name: Attach the SBOM to the GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          V="$(node -p 'require("./package.json").version')"
+          gh release upload "$TAG" "$RUNNER_TEMP/health-export-mcp-$V.cdx.json" --clobber --repo "$GITHUB_REPOSITORY"

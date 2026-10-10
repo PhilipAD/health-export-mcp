@@ -2,15 +2,16 @@ name: Publish to the MCP Registry
 
 # Publishes server.json to registry.modelcontextprotocol.io with GitHub OIDC: no stored secret.
 # The registry trusts this repository's OIDC identity for the io.github.PhilipAD/* namespace.
-# Runs when a GitHub release is published (after `npm publish`, since the registry verifies the
-# npm package's mcpName), or by hand for an existing tag.
+# Runs when a GitHub release is published, or by hand for an existing tag. The registry verifies the
+# npm package's mcpName, so this waits for npm to serve the version (release.yml publishes it on the
+# same event; a manual `npm publish` beforehand works too).
 on:
   release:
     types: [published]
   workflow_dispatch:
     inputs:
       tag:
-        description: "Tag to publish (e.g. v1.6.0)"
+        description: "Tag to publish (e.g. v1.6.1)"
         required: true
 
 permissions:
@@ -20,15 +21,17 @@ permissions:
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    timeout-minutes: 15
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
         with:
           ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
 
       - name: Versions agree with the tag
         run: |
-          TAG="${{ github.event.release.tag_name || inputs.tag }}"
           V="${TAG#v}"
           node -e '
             const v = process.argv[1], f = (p) => JSON.parse(require("fs").readFileSync(p, "utf8"));
@@ -48,10 +51,32 @@ jobs:
           done
           echo "::error::health-export-mcp@$V is not on npm yet; publish to npm first"; exit 1
 
-      - name: Install mcp-publisher
+      # server.json declares the .mcpb as a GitHub release asset with a SHA-256. The registry does
+      # not check that hash, clients do, so refuse to publish an entry the release cannot honour.
+      - name: Release carries the .mcpb that server.json declares
+        env:
+          GH_TOKEN: ${{ github.token }}
         run: |
-          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/latest/download/mcp-publisher_linux_amd64.tar.gz" \
-            | tar xz mcp-publisher
+          WANT_URL="https://github.com/$GITHUB_REPOSITORY/releases/download/$TAG/health-export.mcpb"
+          URL="$(node -p 'require("./server.json").packages.find((p) => p.registryType === "mcpb").identifier')"
+          WANT="$(node -p 'require("./server.json").packages.find((p) => p.registryType === "mcpb").fileSha256')"
+          [ "$URL" = "$WANT_URL" ] || { echo "::error::server.json mcpb identifier is $URL, expected $WANT_URL"; exit 1; }
+          curl -fsSL "$URL" -o "$RUNNER_TEMP/health-export.mcpb" \
+            || { echo "::error::$URL is not downloadable: attach health-export.mcpb to the release"; exit 1; }
+          GOT="$(sha256sum "$RUNNER_TEMP/health-export.mcpb" | cut -d' ' -f1)"
+          [ "$GOT" = "$WANT" ] || { echo "::error::release health-export.mcpb is $GOT, server.json says $WANT"; exit 1; }
+          echo "release asset matches server.json: $GOT"
+
+      # Pinned release and checksum (not an action, so Dependabot does not bump it: update both by hand).
+      - name: Install mcp-publisher
+        env:
+          MCP_PUBLISHER_VERSION: v1.8.1
+          MCP_PUBLISHER_SHA256: a06c9096dcb9727c13555b6be26c7effa707b01f06a4c561ba7a3635443cf2cc
+        run: |
+          curl -fsSL "https://github.com/modelcontextprotocol/registry/releases/download/$MCP_PUBLISHER_VERSION/mcp-publisher_linux_amd64.tar.gz" \
+            -o "$RUNNER_TEMP/mcp-publisher.tar.gz"
+          echo "$MCP_PUBLISHER_SHA256  $RUNNER_TEMP/mcp-publisher.tar.gz" | sha256sum -c -
+          tar xzf "$RUNNER_TEMP/mcp-publisher.tar.gz" mcp-publisher
           ./mcp-publisher --version
 
       - name: Log in with GitHub OIDC and publish
