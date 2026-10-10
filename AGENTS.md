@@ -15,6 +15,18 @@ After configuring, restart the client and ask: **"Use health-export: what's my H
 
 ---
 
+## Claude Code
+
+One command, no clone:
+
+```bash
+claude mcp add --transport stdio health-export \
+  --env "HEALTH_DATA_DIR=$HOME/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents" \
+  -- npx -y health-export-mcp
+```
+
+Keep the double quotes (the folder name contains a space). Add `--scope user` to use it in every project. No export yet: `claude mcp add --transport stdio health-export-demo -- npx -y health-export-mcp --demo` serves synthetic data.
+
 ## Claude Desktop
 
 `~/Library/Application Support/Claude/claude_desktop_config.json`:

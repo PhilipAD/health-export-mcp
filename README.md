@@ -1,10 +1,24 @@
-# health-export-mcp, Apple Health MCP server for AI agents
+# health-export-mcp
 
-**Query your Apple Health data from Claude, ChatGPT, Cursor, OpenClaw, Hermes, and any other AI agent.**
+**Query your own Apple Health data from any MCP client.**
 
-`health-export-mcp` is an open-source, **zero-dependency** [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server that lets any MCP-compatible AI agent query your **Apple Health / HealthKit** data, **190 metrics** as clean JSON, in plain language. Local-first, read-only, no accounts, and no developer server in the path. It's the open-source server for the [MetricBridge](https://www.healthexport.dev) iOS app, **[available on the App Store](https://apps.apple.com/app/id6784185201)**.
+`health-export-mcp` is an open-source, **zero-dependency** [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server. It reads the Apple Health / HealthKit export on your own machine and answers your agent's questions from it: **190 metrics**, **16 tools** and **22 prompts**, as clean JSON. Read-only, local-first, no account, and no developer server in the path.
 
-<p align="center"><a href="https://apps.apple.com/app/id6784185201"><img alt="Download MetricBridge on the App Store" src="https://img.shields.io/badge/Download_on_the-App_Store-0D96F6?style=for-the-badge&logo=apple&logoColor=white" height="38" /></a></p>
+**One command (Claude Code):**
+
+```bash
+claude mcp add --transport stdio health-export \
+  --env "HEALTH_DATA_DIR=$HOME/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents" \
+  -- npx -y health-export-mcp
+```
+
+Keep the double quotes: the iCloud folder name contains a space. No export yet? Try it on synthetic data first:
+
+```bash
+claude mcp add --transport stdio health-export-demo -- npx -y health-export-mcp --demo
+```
+
+Then ask: *"Use health-export: compare my HRV this week vs last week."* Using Claude Desktop, Cursor, VS Code, opencode, OpenClaw or Hermes? See the [Quickstart](#connect-apple-health-to-your-ai-agent-quickstart).
 
 <p align="center">
   <a href="https://glama.ai/mcp/servers/PhilipAD/health-export-mcp"><img alt="Glama MCP Server" src="https://glama.ai/mcp/servers/PhilipAD/health-export-mcp/badges/score.svg" /></a>
@@ -30,13 +44,14 @@ It's an MCP server that turns your Apple Health export into a tool your AI agent
 - **Who it's for:** anyone who wants their AI to reason over their *real* health data instead of a stale CSV.
 - **What it isn't:** a cloud service. There's no developer server in the path, your data goes only where *you* point it.
 - **Setup:** point the server at your exported data and add it to your AI client.
+- **Where the data comes from:** the [MetricBridge](https://www.healthexport.dev) iOS app (formerly Health Export AI), [available on the App Store](https://apps.apple.com/app/id6784185201), writes the export this server reads. The server still reports itself as `health-export-ai` in `serverInfo`, and the npm package and repository names are unchanged.
 
 > **Just exported and the Mac has not seen it yet?** iCloud can take a few minutes to sync the
 > file across, so a check 60 seconds after tapping Run in the app can still show the old
 > timestamp. `get_mcp_status` reports `lastDataDate` and the intraday `lastWrite`, which is the
 > quickest way to tell "still syncing" from "never arrived".
 
-> **Try it with no iPhone needed:** `node server.mjs --demo` serves a deterministic synthetic dataset (400 days, workouts, events, sleep sessions) with every answer watermarked as synthetic. Or run `npm test` to write a sample cache and exercise every tool.
+> **Try it with no iPhone needed:** `npx -y health-export-mcp --demo` (or `node server.mjs --demo` in a clone) serves a deterministic synthetic dataset (400 days, workouts, events, sleep sessions) with every answer watermarked as synthetic. Or run `npm test` to write a sample cache and exercise every tool.
 
 ---
 
@@ -45,6 +60,8 @@ It's an MCP server that turns your Apple Health export into a tool your AI agent
 ### 1. Get your Apple Health data flowing
 
 The companion iOS app **[MetricBridge](https://www.healthexport.dev)** exports your Apple Health data, read-only, automatic, private. For this MCP server, export to a destination it can read:
+
+<p align="center"><a href="https://apps.apple.com/app/id6784185201"><img alt="Download MetricBridge on the App Store" src="https://img.shields.io/badge/Download_on_the-App_Store-0D96F6?style=for-the-badge&logo=apple&logoColor=white" height="38" /></a></p>
 
 | Destination | Notes |
 |---|---|
@@ -56,15 +73,17 @@ The companion iOS app **[MetricBridge](https://www.healthexport.dev)** exports y
 
 ### 2. Add the server to your agent
 
-**Fastest, auto-configure:**
+**Fastest, one command (Claude Code):**
 
 ```bash
-git clone https://github.com/PhilipAD/health-export-mcp.git
-cd health-export-mcp
-node apply-mcp-config.mjs     # detects installed clients and writes the config for you
+claude mcp add --transport stdio health-export \
+  --env "HEALTH_DATA_DIR=$HOME/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents" \
+  -- npx -y health-export-mcp
 ```
 
-**Manual, Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`):
+Everything before `--` is an option for `claude mcp add`, everything after it is the command that starts the server. The path is double-quoted because the iCloud folder name contains a space, and `$HOME` is used because a quoted `~` is not expanded by the shell. Exporting somewhere else? Replace the path with your own folder. Add `--scope user` to make the server available in every project (the default scope is the current project only). Check it with `claude mcp list`.
+
+**Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`), and any client that takes an `mcpServers` block:
 
 ```json
 {
@@ -78,8 +97,16 @@ node apply-mcp-config.mjs     # detects installed clients and writes the config 
 }
 ```
 
-> `npx` fetches the published package at run time (npm verifies package integrity), it runs anywhere, no clone or absolute path needed. Prefer to pin a vetted local checkout instead? Use `"command": "node", "args": ["REPLACE_WITH_ABSOLUTE_PATH/server.mjs"]`, get the path with `node -e "console.log(process.cwd()+'/server.mjs')"` inside the repo.
+> `npx -y` fetches the published package at run time without an install prompt (npm verifies package integrity), so it runs anywhere with no clone or absolute path. The server expands a leading `~` in `HEALTH_DATA_DIR` itself, so the JSON form can keep it. Prefer to pin a vetted local checkout instead? Use `"command": "node", "args": ["REPLACE_WITH_ABSOLUTE_PATH/server.mjs"]`, get the path with `node -e "console.log(process.cwd()+'/server.mjs')"` inside the repo.
 > Or skip JSON entirely, drag **`health-export.mcpb`** into **Claude Desktop → Settings → Extensions**.
+
+**Auto-configure from a clone:**
+
+```bash
+git clone https://github.com/PhilipAD/health-export-mcp.git
+cd health-export-mcp
+node apply-mcp-config.mjs     # detects installed clients and writes the config for you
+```
 
 **Cursor / VS Code:** `node gen-deeplinks.mjs` prints one-click install links.
 **opencode / OpenClaw / Hermes:** see **[AGENTS.md](AGENTS.md)** for the exact block, same shape, one per client.
@@ -96,6 +123,7 @@ Restart the client and try:
 
 | Client / Agent | Integration | How |
 |---|---|---|
+| **Claude Code** | Native MCP | `claude mcp add ... -- npx -y health-export-mcp` |
 | **Claude Desktop** | Native MCP | `.mcpb` bundle, or `mcpServers` block |
 | **Cursor** | Native MCP | One-click deeplink, or `~/.cursor/mcp.json` |
 | **opencode** | Native MCP | `opencode.json` `mcp` block |
@@ -266,7 +294,7 @@ curl -fsSL https://healthexport.dev/mcp/server.mjs -o server.mjs
 shasum -a 256 --ignore-missing -c SHA256SUMS || { echo "checksum mismatch, do not run"; exit 1; }
 ```
 
-The pinned, checksum-verified download above is the locked-down path. `npx health-export-mcp` instead resolves the latest version published to npm at run time (npm provides its own package integrity). Full security overview: <https://healthexport.dev/security>. Report vulnerabilities to **security@healthexport.dev**.
+The pinned, checksum-verified download above is the locked-down path. `npx -y health-export-mcp` instead resolves the latest version published to npm at run time (npm provides its own package integrity). Each GitHub release also carries a `SHA256SUMS` file and its `SHA256SUMS.minisig` signature made with the same key. Full policy, including npm provenance and how to report a vulnerability privately: **[SECURITY.md](SECURITY.md)**. Security overview: <https://healthexport.dev/security>.
 
 ---
 
