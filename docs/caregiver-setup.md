@@ -33,7 +33,7 @@ Point the MCP server at the mounted shared folder:
   "mcpServers": {
     "parent-health": {
       "command": "npx",
-      "args": ["health-export-mcp"],
+      "args": ["-y", "health-export-mcp"],
       "env": { "HEALTH_DATA_DIR": "/Users/you/Library/Mobile Documents/com~apple~CloudDocs/SharedHealthFolder" }
     }
   }

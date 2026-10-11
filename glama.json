@@ -43,6 +43,7 @@
       "name": "health-export-mcp",
       "command": "npx",
       "args": [
+        "-y",
         "health-export-mcp"
       ]
     }

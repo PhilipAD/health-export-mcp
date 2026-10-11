@@ -4,6 +4,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import crypto from 'node:crypto';
 import os from 'node:os';
 import path from 'node:path';
 import { execFileSync, spawn } from 'node:child_process';
@@ -31,6 +32,19 @@ test('manifest.json and lhm.plugin.json list exactly the tools the server regist
   assert.deepEqual(json('manifest.json').tools.map((t) => t.name).sort(), names);
   assert.deepEqual(json('lhm.plugin.json').tools.map((t) => t.name).sort(), names);
   assert.match(json('manifest.json').long_description, new RegExp(`\\b${names.length} tools\\b`));
+});
+
+test('server.json mcpb package points at this version\'s release asset and hashes the committed bundle', () => {
+  const v = json('package.json').version;
+  const mcpb = json('server.json').packages.filter((p) => p.registryType === 'mcpb');
+  assert.equal(mcpb.length, 1, 'exactly one mcpb package');
+  assert.equal(
+    mcpb[0].identifier,
+    `https://github.com/PhilipAD/health-export-mcp/releases/download/v${v}/health-export.mcpb`,
+    'identifier is the GitHub release asset for this version',
+  );
+  const sha = crypto.createHash('sha256').update(fs.readFileSync(path.join(here, 'health-export.mcpb'))).digest('hex');
+  assert.equal(mcpb[0].fileSha256, sha, 'fileSha256 must be the SHA-256 of the committed health-export.mcpb (rebuilt the bundle? update server.json)');
 });
 
 /** Every relative module reachable from server.mjs. */
