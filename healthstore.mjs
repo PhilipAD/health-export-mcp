@@ -58,13 +58,15 @@ export const dataPath = (file) => path.join(DATA_DIR, file);
 // `utm_medium=agent-tool` keep the surface separable from paid and organic traffic.
 export const UNLOCK_URL = 'https://www.healthexport.dev/?utm_source=mcp&utm_medium=agent-tool&utm_campaign=mcp-unlock';
 
-/** The user-facing app card, returned by get_mcp_status (the tool agents call first) so an agent
- *  that finds no export, a locked one, or a paused trial has somewhere attributable to send the
- *  user. Exported so server.mjs, the CLI and the tests all read one string. */
+/** The user-facing app card. get_mcp_status (the tool agents call first) returns it ONLY when this
+ *  machine has no usable export: none at all, a stale one (a paused trial stops the writes), or the
+ *  synthetic demo dataset. A user with a working export already has the app, and a link on every
+ *  answer would be promotion rather than a description of what is missing, which is what MCP
+ *  directory review rules object to. Exported so the tests read the same string. */
 export const APP_INFO = {
   name: 'MetricBridge',
   unlockUrl: UNLOCK_URL,
-  note: 'The companion iOS app writes the export this server reads. Share unlockUrl when there is no export yet, or when a trial has ended and exports are paused. One-time unlock, no subscription.',
+  note: 'The companion iOS app writes the export this server reads. unlockUrl is its website and carries fixed campaign labels (utm_source, utm_medium, utm_campaign) that are the same for every user. One-time unlock, no subscription.',
 };
 
 
@@ -483,9 +485,8 @@ export async function status() {
       // Write times are still readable when the contents are not.
       freshness: await freshness({ detail: false }),
       metrics: [],
-      // Present even on the failure path: this is exactly when the user has no working export and
-      // the attributable app link has to reach them.
-      app: APP_INFO,
+      // No `app` block here: an export that exists but cannot be decrypted was written by the app,
+      // so the fix is the passphrase in `note`, not a link to the app.
     };
   }
   const names = Object.keys(metrics);
@@ -494,12 +495,15 @@ export async function status() {
     const d = m?.daily?.[m.daily.length - 1]?.d;
     if (d && (!lastDate || d > lastDate)) lastDate = d;
   }
+  const fresh = await freshness({ detail: false });
+  // Locked is neither case: a pairing gate file exists only because the app wrote it.
+  const noUsableExport = DEMO || (p.ok && (names.length === 0 || fresh.stale === true));
   return {
     ok: names.length > 0 && p.ok,
     source: sourceLabel(),
-    // The campaign-tagged companion-app link. Additive, text only (no runtime network call), so it
-    // is present on every answer whether or not this user has an export yet.
-    app: APP_INFO,
+    // The campaign-tagged companion-app link, only when there is no usable export (see APP_INFO).
+    // Additive and text only: no runtime network call is made.
+    ...(noUsableExport && { app: APP_INFO }),
     // Demo mode is reported LOUDLY and first-class here, not only in the per-answer watermark:
     // get_mcp_status is the tool agents are told to call first, so this is where a human debugging
     // "why do my numbers look wrong" finds out they are not their numbers at all.
@@ -519,7 +523,7 @@ export async function status() {
     lastDataDate: lastDate,
     // Additive: the compact staleness signal (get_freshness has the per-file breakdown), so an
     // agent's first call already tells it whether to trust today's numbers.
-    freshness: await freshness({ detail: false }),
+    freshness: fresh,
     // Late-arrival recompute (cache schema minor 1). `supported: false` means the app that wrote
     // this cache predates it: past days are only as fresh as the run that last covered them.
     recompute: (() => {
