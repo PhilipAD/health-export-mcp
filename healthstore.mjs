@@ -44,6 +44,32 @@ const DATA_DIR = (RAW_DIR === '~' || RAW_DIR.startsWith('~/'))
  *  elsewhere would silently diverge the moment tilde expansion or env handling changed here. */
 export const dataPath = (file) => path.join(DATA_DIR, file);
 
+// THE INSTALL-INTENT -> UNLOCK MIDDLE, MADE VISIBLE (2026-10-13).
+// The companion iOS app writes the export this server reads, and the funnel into it used to be
+// unmeasurable: install intent runs orders of magnitude above unlocks, and no tool answer carried
+// an attributable link to the app. This is that link. It is TEXT ONLY -- adding it changes no
+// network behaviour, so the server still makes zero runtime calls and the offline privacy promise
+// is untouched.
+//
+// `utm_campaign=mcp-unlock` names THIS surface, so a visit lands under one campaign in the site's
+// first-party analytics (Umami) instead of the undifferentiated direct bucket. site/app.js then
+// stamps the same value onto the App Store link's Apple campaign token (ct) on the way through, so
+// App Store Connect attributes the DOWNLOAD, not just the click on our site. `utm_source=mcp` and
+// `utm_medium=agent-tool` keep the surface separable from paid and organic traffic.
+export const UNLOCK_URL = 'https://www.healthexport.dev/?utm_source=mcp&utm_medium=agent-tool&utm_campaign=mcp-unlock';
+
+/** The user-facing app card. get_mcp_status (the tool agents call first) returns it ONLY when this
+ *  machine has no usable export: none at all, a stale one (a paused trial stops the writes), or the
+ *  synthetic demo dataset. A user with a working export already has the app, and a link on every
+ *  answer would be promotion rather than a description of what is missing, which is what MCP
+ *  directory review rules object to. Exported so the tests read the same string. */
+export const APP_INFO = {
+  name: 'MetricBridge',
+  unlockUrl: UNLOCK_URL,
+  note: 'The companion iOS app writes the export this server reads. unlockUrl is its website and carries fixed campaign labels (utm_source, utm_medium, utm_campaign) that are the same for every user. One-time unlock, no subscription.',
+};
+
+
 // Guard against reading something pathological, but sized for a real full-history cache.
 // Measured on this cache's exact shape (189 metrics x 3,653 days): 22.0 MB compact. The old
 // 64 MB ceiling was within reach of a long history once workouts were included -- and worse, the
@@ -459,6 +485,8 @@ export async function status() {
       // Write times are still readable when the contents are not.
       freshness: await freshness({ detail: false }),
       metrics: [],
+      // No `app` block here: an export that exists but cannot be decrypted was written by the app,
+      // so the fix is the passphrase in `note`, not a link to the app.
     };
   }
   const names = Object.keys(metrics);
@@ -467,9 +495,15 @@ export async function status() {
     const d = m?.daily?.[m.daily.length - 1]?.d;
     if (d && (!lastDate || d > lastDate)) lastDate = d;
   }
+  const fresh = await freshness({ detail: false });
+  // Locked is neither case: a pairing gate file exists only because the app wrote it.
+  const noUsableExport = DEMO || (p.ok && (names.length === 0 || fresh.stale === true));
   return {
     ok: names.length > 0 && p.ok,
     source: sourceLabel(),
+    // The campaign-tagged companion-app link, only when there is no usable export (see APP_INFO).
+    // Additive and text only: no runtime network call is made.
+    ...(noUsableExport && { app: APP_INFO }),
     // Demo mode is reported LOUDLY and first-class here, not only in the per-answer watermark:
     // get_mcp_status is the tool agents are told to call first, so this is where a human debugging
     // "why do my numbers look wrong" finds out they are not their numbers at all.
@@ -489,7 +523,7 @@ export async function status() {
     lastDataDate: lastDate,
     // Additive: the compact staleness signal (get_freshness has the per-file breakdown), so an
     // agent's first call already tells it whether to trust today's numbers.
-    freshness: await freshness({ detail: false }),
+    freshness: fresh,
     // Late-arrival recompute (cache schema minor 1). `supported: false` means the app that wrote
     // this cache predates it: past days are only as fresh as the run that last covered them.
     recompute: (() => {

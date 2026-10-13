@@ -257,6 +257,9 @@ test('pipeline fixture: without a passphrase the server explains instead of repo
     assert.equal(st.data.encrypted, true);
     assert.equal(st.data.encryptionError, 'passphrase_missing');
     assert.match(st.data.note, /HEALTH_EXPORT_PASSPHRASE/);
+    // An export that exists but cannot be opened came from the app: the fix is the passphrase, so
+    // the companion-app link is not offered here.
+    assert.equal('app' in st.data, false);
     const m = await s.call('get_health_metrics', { metric: 'step_count' });
     assert.equal(m.isError, true);
     assert.match(m.text, /encrypted/);

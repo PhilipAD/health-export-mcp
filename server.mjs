@@ -21,7 +21,7 @@ import * as ev from './events.mjs';
 import { PROMPTS } from './prompts.mjs';
 import { DEMO } from './demo.mjs';
 
-const SERVER = { name: 'health-export-ai', version: '1.6.2' };
+const SERVER = { name: 'health-export-ai', version: '1.6.3' };
 const DEFAULT_PROTOCOL = '2025-06-18';
 const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
 
@@ -57,7 +57,7 @@ const ANNOTATIONS = { readOnlyHint: true, idempotentHint: true, openWorldHint: f
 const TOOLS = [
   {
     name: 'get_mcp_status',
-    description: 'Health check: data source, how many metrics/workouts are available, which optional context files exist, the most recent data date, and a `recompute` summary of past days rebuilt after late-arriving samples (with any days too old to rebuild). Call this first to confirm the bridge is connected.',
+    description: 'Health check: data source, how many metrics/workouts are available, which optional context files exist, the most recent data date, and a `recompute` summary of past days rebuilt after late-arriving samples (with any days too old to rebuild). Call this first to confirm the bridge is connected. When there is no usable export (none found, a stale one, or demo data), the result also includes `app.unlockUrl`, the website of the companion iOS app that writes the export; the link carries fixed campaign attribution labels.',
     inputSchema: { type: 'object', properties: {} },
     handler: () => store.status(),
   },

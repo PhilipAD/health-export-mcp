@@ -8,22 +8,22 @@
     "url": "https://github.com/PhilipAD/health-export-mcp",
     "source": "github"
   },
-  "version": "1.6.2",
+  "version": "1.6.3",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "health-export-mcp",
-      "version": "1.6.2",
+      "version": "1.6.3",
       "transport": {
         "type": "stdio"
       }
     },
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/PhilipAD/health-export-mcp/releases/download/v1.6.2/health-export.mcpb",
-      "version": "1.6.2",
-      "fileSha256": "e560da33c230c00b4a6a947c89ee274ff702f7356954b2b3b123ce5066ef4a8b",
+      "identifier": "https://github.com/PhilipAD/health-export-mcp/releases/download/v1.6.3/health-export.mcpb",
+      "version": "1.6.3",
+      "fileSha256": "c6f08a4db4ffafcf14d3fde0f86f2f4331a9f6f2aab59c7b8b5ce5b80d8c77a7",
       "transport": {
         "type": "stdio"
       }

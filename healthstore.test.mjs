@@ -230,3 +230,57 @@ test('intraday: a corrupt file degrades to available:false, not a crash', async 
   assert.equal(out.available, false);
   fs.rmSync(path.join(DIR, 'health-intraday.json'));
 });
+
+// The install-intent -> unlock middle was dark: npm installs and clones ran 40-60x the unlocks and
+// no tool answer carried an attributable link to the app. get_mcp_status is the tool every agent is
+// told to call first, so that is where the tagged link goes, but ONLY for a machine with no usable
+// export: a link on every answer is promotion, which MCP directory review rules reject. Assert the
+// TAG, not just the presence, or a refactor can silently drop the campaign and the funnel goes
+// dark again with a green suite. Each case is a fresh process because the data dir and demo flag
+// are read once at import.
+const statusIn = (env) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e',
+  `import(${JSON.stringify(path.join(HERE, 'healthstore.mjs'))}).then(async (s) => console.log(JSON.stringify(await s.status())))`],
+  { env: { PATH: process.env.PATH, ...env }, encoding: 'utf8' }));
+const assertTagged = (app) => {
+  assert.equal(app.unlockUrl, store.UNLOCK_URL);
+  assert.equal(app.name, 'MetricBridge');
+  const u = new URL(app.unlockUrl);
+  assert.equal(u.origin, 'https://www.healthexport.dev');
+  assert.equal(u.searchParams.get('utm_source'), 'mcp');
+  assert.equal(u.searchParams.get('utm_medium'), 'agent-tool');
+  // site/app.js copies utm_campaign into Apple's campaign token, which allows at most 30 characters.
+  assert.equal(u.searchParams.get('utm_campaign'), 'mcp-unlock');
+  assert.doesNotMatch(app.note, /\b(share|tell|give|send|must|always)\b/i, 'the note describes, it does not instruct the agent');
+};
+
+test('status omits the companion-app link when a fresh export is present', async () => {
+  const s = await store.status();
+  assert.equal(s.ok, true);
+  assert.equal(s.freshness.stale, false);
+  assert.equal('app' in s, false);
+});
+
+test('status carries the campaign-tagged companion-app link when there is no export', () => {
+  const empty = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-empty-'));
+  const s = statusIn({ HEALTH_DATA_DIR: empty });
+  assert.equal(s.ok, false);
+  assert.equal(s.metricCount, 0);
+  assertTagged(s.app);
+});
+
+test('status carries the link when the export has gone stale (a paused trial stops the writes)', () => {
+  const stale = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-stale-'));
+  const f = path.join(stale, '.health-cache.json');
+  fs.writeFileSync(f, JSON.stringify({ step_count: { unit: 'count', cumulative: true, daily: [{ d: '2026-01-01', v: 1 }] } }));
+  const old = new Date(Date.now() - 30 * 86400000);
+  fs.utimesSync(f, old, old);
+  const s = statusIn({ HEALTH_DATA_DIR: stale });
+  assert.equal(s.freshness.stale, true);
+  assertTagged(s.app);
+});
+
+test('status carries the link in demo mode, where no real export is read', () => {
+  const s = statusIn({ HEALTH_DEMO: '1' });
+  assert.equal(s.demo, true);
+  assertTagged(s.app);
+});
