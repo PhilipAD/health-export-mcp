@@ -230,3 +230,17 @@ test('intraday: a corrupt file degrades to available:false, not a crash', async 
   assert.equal(out.available, false);
   fs.rmSync(path.join(DIR, 'health-intraday.json'));
 });
+
+// The install-intent -> unlock middle was dark: npm installs and clones ran 40-60x the unlocks and
+// no tool answer carried an attributable link to the app. get_mcp_status is the tool every agent is
+// told to call first, so that is where the tagged link has to be, on every answer. Assert the TAG,
+// not just the presence, or a refactor can silently drop the campaign and the funnel goes dark
+// again with a green suite.
+test('status carries the campaign-tagged companion-app link on the happy path', async () => {
+  const s = await store.status();
+  assert.equal(s.app.unlockUrl, store.UNLOCK_URL);
+  assert.equal(s.app.name, 'MetricBridge');
+  assert.match(s.app.unlockUrl, /utm_campaign=mcp-unlock/);
+  assert.match(s.app.unlockUrl, /utm_source=mcp/);
+  assert.match(s.app.unlockUrl, /^https:\/\/www\.healthexport\.dev\//);
+});

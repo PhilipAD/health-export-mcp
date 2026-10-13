@@ -44,6 +44,30 @@ const DATA_DIR = (RAW_DIR === '~' || RAW_DIR.startsWith('~/'))
  *  elsewhere would silently diverge the moment tilde expansion or env handling changed here. */
 export const dataPath = (file) => path.join(DATA_DIR, file);
 
+// THE INSTALL-INTENT -> UNLOCK MIDDLE, MADE VISIBLE (2026-10-13).
+// The companion iOS app writes the export this server reads, and the funnel into it used to be
+// unmeasurable: install intent runs orders of magnitude above unlocks, and no tool answer carried
+// an attributable link to the app. This is that link. It is TEXT ONLY -- adding it changes no
+// network behaviour, so the server still makes zero runtime calls and the offline privacy promise
+// is untouched.
+//
+// `utm_campaign=mcp-unlock` names THIS surface, so a visit lands under one campaign in the site's
+// first-party analytics (Umami) instead of the undifferentiated direct bucket. site/app.js then
+// stamps the same value onto the App Store link's Apple campaign token (ct) on the way through, so
+// App Store Connect attributes the DOWNLOAD, not just the click on our site. `utm_source=mcp` and
+// `utm_medium=agent-tool` keep the surface separable from paid and organic traffic.
+export const UNLOCK_URL = 'https://www.healthexport.dev/?utm_source=mcp&utm_medium=agent-tool&utm_campaign=mcp-unlock';
+
+/** The user-facing app card, returned by get_mcp_status (the tool agents call first) so an agent
+ *  that finds no export, a locked one, or a paused trial has somewhere attributable to send the
+ *  user. Exported so server.mjs, the CLI and the tests all read one string. */
+export const APP_INFO = {
+  name: 'MetricBridge',
+  unlockUrl: UNLOCK_URL,
+  note: 'The companion iOS app writes the export this server reads. Share unlockUrl when there is no export yet, or when a trial has ended and exports are paused. One-time unlock, no subscription.',
+};
+
+
 // Guard against reading something pathological, but sized for a real full-history cache.
 // Measured on this cache's exact shape (189 metrics x 3,653 days): 22.0 MB compact. The old
 // 64 MB ceiling was within reach of a long history once workouts were included -- and worse, the
@@ -459,6 +483,9 @@ export async function status() {
       // Write times are still readable when the contents are not.
       freshness: await freshness({ detail: false }),
       metrics: [],
+      // Present even on the failure path: this is exactly when the user has no working export and
+      // the attributable app link has to reach them.
+      app: APP_INFO,
     };
   }
   const names = Object.keys(metrics);
@@ -470,6 +497,9 @@ export async function status() {
   return {
     ok: names.length > 0 && p.ok,
     source: sourceLabel(),
+    // The campaign-tagged companion-app link. Additive, text only (no runtime network call), so it
+    // is present on every answer whether or not this user has an export yet.
+    app: APP_INFO,
     // Demo mode is reported LOUDLY and first-class here, not only in the per-answer watermark:
     // get_mcp_status is the tool agents are told to call first, so this is where a human debugging
     // "why do my numbers look wrong" finds out they are not their numbers at all.
