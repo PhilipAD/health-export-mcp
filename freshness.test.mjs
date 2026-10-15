@@ -33,6 +33,20 @@ const store = await import('./healthstore.mjs');
 const isoDay = (ms) => new Date(ms).toISOString().slice(0, 10);
 const WRITTEN_AT = '2026-10-04T06:30:00.000Z';
 
+/** The install-intent link, asserted by TAG not presence. `store.UNLOCK_URL` is the single source
+ *  of truth the app card, the runtime string and this test all read, and the campaign token is
+ *  copied into Apple's ct on the way through site/app.js. Assert every component so a refactor that
+ *  "cleans up" the query string fails here instead of silently darkening the funnel. */
+function assertRelayLink(rec) {
+  assert.ok(rec.includes(store.UNLOCK_URL), `recommendation must carry the tagged app link:\n${rec}`);
+  const u = new URL(store.UNLOCK_URL);
+  assert.equal(u.origin, 'https://www.healthexport.dev');
+  assert.equal(u.searchParams.get('utm_source'), 'mcp');
+  assert.equal(u.searchParams.get('utm_medium'), 'agent-tool');
+  // site/app.js copies utm_campaign into Apple's campaign token, which allows at most 30 chars.
+  assert.equal(u.searchParams.get('utm_campaign'), 'mcp-unlock');
+}
+
 function cache({ meta = true, lastDay = '2026-10-04' } = {}) {
   const end = Date.parse(lastDay + 'T00:00:00Z');
   const daily = Array.from({ length: 5 }, (_, i) => ({ d: isoDay(end - (4 - i) * 86400000), v: 1000 + i }));
@@ -76,6 +90,9 @@ test('fresh export: state fresh, as_of from _meta.writtenAt, age, last data date
   assert.deepEqual(Object.keys(f.files), ['.health-cache.json']);
   assert.deepEqual(f.stale_files, []);
   assert.match(f.recommendation, /26-hour freshness window/);
+  // A fresh, usable export must NOT carry the app link: the card is for a machine with no usable
+  // export, and a link on every answer is promotion, which MCP directory review rules reject.
+  assert.doesNotMatch(f.recommendation, /healthexport\.dev/);
 });
 
 test('old export: stale true once the newest write passes the threshold, with a refresh hint', async () => {
@@ -89,6 +106,13 @@ test('old export: stale true once the newest write passes the threshold, with a 
   assert.deepEqual(f.stale_files, ['.health-cache.json']);
   assert.match(f.recommendation, /30 hours old, older than the 26-hour window/);
   assert.match(f.recommendation, /2026-10-04/);
+  // The stale case is the paused-trial / unfinished-sync wall -- the money moment. The tagged app
+  // link must ride the plain-language recommendation the agent relays, not only app.unlockUrl.
+  assertRelayLink(f.recommendation);
+  // Only the app writes these files, so a stale export proves it is installed: the hint must name
+  // the ended trial (the app's LicenseGate stops exports then), never tell the user to install it.
+  assert.match(f.recommendation, /free trial ends; if that is why, the one-time unlock inside the iOS app resumes the exports \(app website: /);
+  assert.doesNotMatch(f.recommendation, /not installed/);
   // Just inside the threshold is fresh; just past it is stale even when both ROUND to 26.0, because
   // the decision uses the exact age, the same comparison the cron gate makes.
   put(DIR, '.health-cache.json', cache(), 25.99, now);
@@ -118,6 +142,11 @@ test('maxAgeHours overrides the threshold; nonsense values are rejected loudly',
   assert.equal((await store.freshness({ now, maxAgeHours: 4 })).stale, true);
   assert.equal((await store.freshness({ now, maxAgeHours: 6 })).stale, false);
   assert.equal((await store.freshness({ now, maxAgeHours: 0.5 })).stale_after_hours, 0.5);
+  // A caller's stricter window marks the export stale but must NOT turn a working export into the
+  // ended-trial hint: the link follows the server's own window only.
+  const strict = await store.freshness({ now, maxAgeHours: 4 });
+  assert.equal(strict.stale, true);
+  assert.doesNotMatch(strict.recommendation, /healthexport\.dev|free trial/);
   for (const bad of [0, -1, '6', NaN, Infinity, 8761, true]) {
     await assert.rejects(store.freshness({ now, maxAgeHours: bad }), /maxAgeHours must be a number/, `rejects ${String(bad)}`);
   }
@@ -132,6 +161,8 @@ test('HEALTH_STALE_AFTER_HOURS sets the default; a malformed value falls back in
     const f = await store.freshness({ now });
     assert.equal(f.stale_after_hours, 4);
     assert.equal(f.stale, true);
+    // A low env window is the same as a strict caller: stale, but no trial hint before 26 hours.
+    assert.doesNotMatch(f.recommendation, /healthexport\.dev|free trial/);
     assert.equal((await store.freshness({ now, maxAgeHours: 10 })).stale, false, 'the argument beats the env');
     for (const junk of ['24h', '0', '-3', 'abc', '99999']) {
       process.env.HEALTH_STALE_AFTER_HOURS = junk;
@@ -162,6 +193,9 @@ test('empty folder: state no_data and stale true, nothing invented', async () =>
   assert.equal(f.last_data_date, null);
   assert.deepEqual(f.files, {});
   assert.match(f.recommendation, /No export files/);
+  // The relay link: the no-export recommendation is the agent's prose answer, so the campaign tag
+  // has to be there -- presence alone would pass with a stripped tag and the funnel goes dark.
+  assertRelayLink(f.recommendation);
 });
 
 test('a file stamped in the future (clock skew) reads as age 0, never negative', async () => {
@@ -185,9 +219,14 @@ test('an encrypted cache with no passphrase still reports write-time freshness',
   assert.equal(f.last_data_date, null);
   assert.equal(f.cacheReadError, 'passphrase_missing');
   assert.match(f.recommendation, /could not be read \(passphrase_missing\)/);
+  // The app wrote this file, so the fix is the passphrase: no trial hint, no app link -- in the
+  // freshness answer or in status()'s encrypted early return (which has no `app` block either).
+  assert.doesNotMatch(f.recommendation, /healthexport\.dev|free trial/);
   const s = await store.status();
   assert.equal(s.encrypted, true);
   assert.equal(s.freshness.state, 'stale');
+  assert.equal(s.app, undefined);
+  assert.doesNotMatch(s.freshness.recommendation, /healthexport\.dev/);
   // A RECENT unreadable cache keeps its write-time state but still says it is not usable.
   put(DIR, '.health-cache.json', sealed, 1, now);
   const g = await store.freshness({ now });
