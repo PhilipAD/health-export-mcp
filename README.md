@@ -44,7 +44,7 @@ It's an MCP server that turns your Apple Health export into a tool your AI agent
 - **Who it's for:** anyone who wants their AI to reason over their *real* health data instead of a stale CSV.
 - **What it isn't:** a cloud service. There's no developer server in the path, your data goes only where *you* point it.
 - **Setup:** point the server at your exported data and add it to your AI client.
-- **Where the data comes from:** the [MetricBridge](https://www.healthexport.dev) iOS app (formerly Health Export AI), [available on the App Store](https://apps.apple.com/app/id6784185201), writes the export this server reads. The server still reports itself as `health-export-ai` in `serverInfo`, and the npm package and repository names are unchanged.
+- **Where the data comes from:** the [MetricBridge](https://www.healthexport.dev) iOS app (formerly Health Export AI), [available on the App Store](https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8), writes the export this server reads. The server still reports itself as `health-export-ai` in `serverInfo`, and the npm package and repository names are unchanged.
 
 > **Just exported and the Mac has not seen it yet?** iCloud can take a few minutes to sync the
 > file across, so a check 60 seconds after tapping Run in the app can still show the old
@@ -61,7 +61,7 @@ It's an MCP server that turns your Apple Health export into a tool your AI agent
 
 The companion iOS app **[MetricBridge](https://www.healthexport.dev)** exports your Apple Health data, read-only, automatic, private. For this MCP server, export to a destination it can read:
 
-<p align="center"><a href="https://apps.apple.com/app/id6784185201"><img alt="Download MetricBridge on the App Store" src="https://img.shields.io/badge/Download_on_the-App_Store-0D96F6?style=for-the-badge&logo=apple&logoColor=white" height="38" /></a></p>
+<p align="center"><a href="https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8"><img alt="Download MetricBridge on the App Store" src="https://img.shields.io/badge/Download_on_the-App_Store-0D96F6?style=for-the-badge&logo=apple&logoColor=white" height="38" /></a></p>
 
 | Destination | Notes |
 |---|---|
@@ -221,7 +221,7 @@ node server.mjs --help
 
 <p align="center"><sub><a href="https://www.healthexport.dev">MetricBridge</a>, exports your Apple Health to your agent, automatically.</sub></p>
 
-<p align="center"><a href="https://apps.apple.com/app/id6784185201"><b>Download on the App Store →</b></a></p>
+<p align="center"><a href="https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8"><b>Download on the App Store →</b></a></p>
 
 ---
 
