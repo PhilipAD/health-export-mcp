@@ -728,6 +728,12 @@ export async function freshness({ maxAgeHours, detail = true, now = Date.now() }
   // A cache that could not be read must not read as plainly usable even when its file is recent:
   // the data tools will fail on it. `state` stays a write-time verdict (stable values); the
   // recommendation carries the problem.
+  // The trial hint (and its link) goes out on the SERVER's own staleness rule, never on a stricter
+  // window a caller asked for: an agent passing maxAgeHours: 1 must not turn a paying user's
+  // two-hour-old export into a purchase hint. It is also withheld when the cache exists but cannot
+  // be read (an encrypted export without its passphrase): the app wrote that file, so the fix is
+  // the passphrase, not the app -- the same rule as status()'s encrypted early return.
+  const trialHint = stale && rawAge > Math.max(staleAfterHours(), DEFAULT_STALE_AFTER_HOURS) && !cacheReadError;
   const readNote = cacheReadError
     ? ` The daily cache could not be read (${cacheReadError}), so data tools will fail until that is fixed; run get_mcp_status for the details.`
     : '';
@@ -747,9 +753,11 @@ export async function freshness({ maxAgeHours, detail = true, now = Date.now() }
       // A stale export is usually a sync the phone never finished or an ended free trial (the
       // app's LicenseGate stops exporting then) -- the second is the money moment. The app IS
       // installed here (only it writes these files), so the hint names the trial, not an install.
-      // `app.unlockUrl` is returned along the same path; repeating it in prose is what makes the
-      // agent's answer carry the tagged link and not just the structured field.
-      ? `The newest export is ${age} hours old, older than the ${threshold}-hour window. Answers only cover data up to ${lastDataDate ?? 'the last export'}; if current numbers matter, ask the user to open MetricBridge or run an export, then check again. MetricBridge also stops exporting when its free trial ends; if that is why, the one-time unlock in the app resumes the exports (${UNLOCK_URL}).`
+      // The unlock is an in-app purchase; the URL is labelled as the app's website so nobody reads
+      // it as a payment link. `app.unlockUrl` is returned along the same path; repeating it in
+      // prose is what makes the agent's answer carry the tagged link, not just the nested field.
+      ? `The newest export is ${age} hours old, older than the ${threshold}-hour window. Answers only cover data up to ${lastDataDate ?? 'the last export'}; if current numbers matter, ask the user to open MetricBridge or run an export, then check again.`
+        + (trialHint ? ` MetricBridge also stops exporting when its free trial ends; if that is why, the one-time unlock inside the iOS app resumes the exports (app website: ${UNLOCK_URL}).` : '')
       : `Within the ${threshold}-hour freshness window: the newest export landed ${age} hours ago.`)
       + readNote,
   };

@@ -23,7 +23,7 @@
       "registryType": "mcpb",
       "identifier": "https://github.com/PhilipAD/health-export-mcp/releases/download/v1.6.5/health-export.mcpb",
       "version": "1.6.5",
-      "fileSha256": "b127e8f0110361872f812a99d0d53505febe03b2cfdab709236c3b8ed2586536",
+      "fileSha256": "7db2702f41eac4761900d555676fc11e23117265cc1cf39c7c2500682984cdff",
       "transport": {
         "type": "stdio"
       }
