@@ -712,7 +712,14 @@ export async function freshness({ maxAgeHours, detail = true, now = Date.now() }
       as_of: null, as_of_source: null, newest_write: null, age_hours: null,
       last_data_date: null, data_lag_days: null,
       ...(detail && { files: {}, stale_files: [] }),
-      recommendation: 'No export files were found in the data folder. Export from the MetricBridge iOS app, then check again.',
+      // The wall message. This is the highest-intent moment in the whole funnel: an agent that
+      // cannot read a single metric has already installed the MCP server and hit the one thing
+      // only the iOS app removes. The `app.unlockUrl` card below is correct but buried in
+      // structuredContent, and agents summarise rather than echo deep JSON -- measured result:
+      // 1 visit to that link in 90 days. So the tagged URL goes where the agent actually relays
+      // it, inside the plain-language recommendation, with the SAME campaign tag (the test pins
+      // the tag, not just presence, or a refactor can silently drop the campaign).
+      recommendation: `No export files were found in the data folder. Export from the MetricBridge iOS app (${UNLOCK_URL}), then check again.`,
     };
   }
   const rawAge = rawAgeHours(newest.mtimeMs, now);
@@ -737,7 +744,12 @@ export async function freshness({ maxAgeHours, detail = true, now = Date.now() }
     ...(cacheReadError && { cacheReadError }),
     ...(detail && { files, stale_files: staleFiles }),
     recommendation: (stale
-      ? `The newest export is ${age} hours old, older than the ${threshold}-hour window. Answers only cover data up to ${lastDataDate ?? 'the last export'}; if current numbers matter, ask the user to open MetricBridge or run an export, then check again.`
+      // A stale export is usually a sync the phone never finished or an ended free trial (the
+      // app's LicenseGate stops exporting then) -- the second is the money moment. The app IS
+      // installed here (only it writes these files), so the hint names the trial, not an install.
+      // `app.unlockUrl` is returned along the same path; repeating it in prose is what makes the
+      // agent's answer carry the tagged link and not just the structured field.
+      ? `The newest export is ${age} hours old, older than the ${threshold}-hour window. Answers only cover data up to ${lastDataDate ?? 'the last export'}; if current numbers matter, ask the user to open MetricBridge or run an export, then check again. MetricBridge also stops exporting when its free trial ends; if that is why, the one-time unlock in the app resumes the exports (${UNLOCK_URL}).`
       : `Within the ${threshold}-hour freshness window: the newest export landed ${age} hours ago.`)
       + readNote,
   };

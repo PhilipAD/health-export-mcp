@@ -266,6 +266,10 @@ test('status carries the campaign-tagged companion-app link when there is no exp
   assert.equal(s.ok, false);
   assert.equal(s.metricCount, 0);
   assertTagged(s.app);
+  // The link must ALSO ride the freshness recommendation -- the prose an agent relays. app.unlockUrl
+  // alone sat unread in structuredContent and the measured result was 1 visit in 90 days.
+  assert.ok(s.freshness.recommendation.includes(store.UNLOCK_URL),
+    `freshness.recommendation must carry the tagged link:\n${s.freshness.recommendation}`);
 });
 
 test('status carries the link when the export has gone stale (a paused trial stops the writes)', () => {
@@ -277,6 +281,9 @@ test('status carries the link when the export has gone stale (a paused trial sto
   const s = statusIn({ HEALTH_DATA_DIR: stale });
   assert.equal(s.freshness.stale, true);
   assertTagged(s.app);
+  // The paused-trial wall: the stale recommendation must relay the tagged link in prose too.
+  assert.ok(s.freshness.recommendation.includes(store.UNLOCK_URL),
+    `stale freshness.recommendation must carry the tagged link:\n${s.freshness.recommendation}`);
 });
 
 test('status carries the link in demo mode, where no real export is read', () => {

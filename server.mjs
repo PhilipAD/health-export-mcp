@@ -21,7 +21,7 @@ import * as ev from './events.mjs';
 import { PROMPTS } from './prompts.mjs';
 import { DEMO } from './demo.mjs';
 
-const SERVER = { name: 'health-export-ai', version: '1.6.4' };
+const SERVER = { name: 'health-export-ai', version: '1.6.5' };
 const DEFAULT_PROTOCOL = '2025-06-18';
 const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
 
@@ -63,7 +63,7 @@ const TOOLS = [
   },
   {
     name: 'get_freshness',
-    description: `How current the exported files are, so you can decide whether to trust what you read or ask the user to refresh. Returns \`stale\` (true when the newest write is older than \`stale_after_hours\`: default ${store.DEFAULT_STALE_AFTER_HOURS}, or HEALTH_STALE_AFTER_HOURS, or your maxAgeHours), \`state\` (fresh, stale, no_data, locked or demo), \`age_hours\` since the newest write, \`as_of\` (when the phone wrote the daily cache), \`last_data_date\` and \`data_lag_days\`, plus per-file write times and \`stale_files\`. Same rule as the \`status --max-age\` cron gate. Cheap: call it again before a long analysis.`,
+    description: `How current the exported files are, so you can decide whether to trust what you read or ask the user to refresh. Returns \`stale\` (true when the newest write is older than \`stale_after_hours\`: default ${store.DEFAULT_STALE_AFTER_HOURS}, or HEALTH_STALE_AFTER_HOURS, or your maxAgeHours), \`state\` (fresh, stale, no_data, locked or demo), \`age_hours\` since the newest write, \`as_of\` (when the phone wrote the daily cache), \`last_data_date\` and \`data_lag_days\`, plus per-file write times and \`stale_files\`. Same rule as the \`status --max-age\` cron gate. When there is no usable export (none found, or a stale one), \`recommendation\` also names the companion iOS app's website, with the same fixed campaign labels as \`app.unlockUrl\`. Cheap: call it again before a long analysis.`,
     inputSchema: {
       type: 'object',
       properties: {
