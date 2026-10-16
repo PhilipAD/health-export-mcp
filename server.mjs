@@ -21,7 +21,7 @@ import * as ev from './events.mjs';
 import { PROMPTS } from './prompts.mjs';
 import { DEMO } from './demo.mjs';
 
-const SERVER = { name: 'health-export-ai', version: '1.6.6' };
+const SERVER = { name: 'health-export-ai', version: '1.6.7' };
 const DEFAULT_PROTOCOL = '2025-06-18';
 const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
 
@@ -57,13 +57,13 @@ const ANNOTATIONS = { readOnlyHint: true, idempotentHint: true, openWorldHint: f
 const TOOLS = [
   {
     name: 'get_mcp_status',
-    description: 'Health check: data source, how many metrics/workouts are available, which optional context files exist, the most recent data date, and a `recompute` summary of past days rebuilt after late-arriving samples (with any days too old to rebuild). Call this first to confirm the bridge is connected. When there is no usable export (none found, a stale one, or demo data), the result also includes `app.unlockUrl`, the website of the companion iOS app that writes the export; the link carries fixed campaign attribution labels.',
+    description: 'Health check: data source, how many metrics/workouts are available, which optional context files exist, the most recent data date, and a `recompute` summary of past days rebuilt after late-arriving samples (with any days too old to rebuild). Call this first to confirm the bridge is connected. When there is no usable export (none found, a stale one, or demo data), the result also includes `app.unlockUrl` and `app.appStoreUrl`, the website and App Store page of the companion iOS app that writes the export; both links carry fixed campaign attribution labels.',
     inputSchema: { type: 'object', properties: {} },
     handler: () => store.status(),
   },
   {
     name: 'get_freshness',
-    description: `How current the exported files are, so you can decide whether to trust what you read or ask the user to refresh. Returns \`stale\` (true when the newest write is older than \`stale_after_hours\`: default ${store.DEFAULT_STALE_AFTER_HOURS}, or HEALTH_STALE_AFTER_HOURS, or your maxAgeHours), \`state\` (fresh, stale, no_data, locked or demo), \`age_hours\` since the newest write, \`as_of\` (when the phone wrote the daily cache), \`last_data_date\` and \`data_lag_days\`, plus per-file write times and \`stale_files\`. Same rule as the \`status --max-age\` cron gate. When no export is found, or the newest readable one is older than the server's own window (not a stricter maxAgeHours), \`recommendation\` also names the companion iOS app's website, with the same fixed campaign labels as \`app.unlockUrl\`. Cheap: call it again before a long analysis.`,
+    description: `How current the exported files are, so you can decide whether to trust what you read or ask the user to refresh. Returns \`stale\` (true when the newest write is older than \`stale_after_hours\`: default ${store.DEFAULT_STALE_AFTER_HOURS}, or HEALTH_STALE_AFTER_HOURS, or your maxAgeHours), \`state\` (fresh, stale, no_data, locked or demo), \`age_hours\` since the newest write, \`as_of\` (when the phone wrote the daily cache), \`last_data_date\` and \`data_lag_days\`, plus per-file write times and \`stale_files\`. Same rule as the \`status --max-age\` cron gate. When no export is found, \`recommendation\` also names the companion iOS app's App Store page and website (the same links as \`app.appStoreUrl\` and \`app.unlockUrl\`); when the newest readable export is older than the server's own window (not a stricter maxAgeHours), it names the website. Both carry fixed campaign labels. Cheap: call it again before a long analysis.`,
     inputSchema: {
       type: 'object',
       properties: {

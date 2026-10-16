@@ -3,7 +3,7 @@
 Copy-paste setup for every supported agent. The server is a single Node script (`server.mjs`,
 zero dependencies). Point `HEALTH_DATA_DIR` at the folder that holds your exported
 `.health-cache.json`, by default the [MetricBridge](https://www.healthexport.dev) iOS app
-([App Store](https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8)) writes it to your iCloud Drive container:
+([App Store](https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8&ppid=2c28f88a-d94f-48f9-8e6a-74a8d89ce66e)) writes it to your iCloud Drive container:
 
 ```
 ~/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents
