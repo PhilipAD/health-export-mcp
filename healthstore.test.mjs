@@ -243,6 +243,10 @@ const statusIn = (env) => JSON.parse(execFileSync(process.execPath, ['--input-ty
   { env: { PATH: process.env.PATH, ...env }, encoding: 'utf8' }));
 const assertTagged = (app) => {
   assert.equal(app.unlockUrl, store.UNLOCK_URL);
+  assert.equal(app.appStoreUrl, store.APP_STORE_URL);
+  const a = new URL(app.appStoreUrl);
+  assert.equal(a.searchParams.get('ct'), 'mcpserver');
+  assert.equal(a.searchParams.get('ppid'), '2c28f88a-d94f-48f9-8e6a-74a8d89ce66e');
   assert.equal(app.name, 'MetricBridge');
   const u = new URL(app.unlockUrl);
   assert.equal(u.origin, 'https://www.healthexport.dev');
@@ -270,6 +274,8 @@ test('status carries the campaign-tagged companion-app link when there is no exp
   // alone sat unread in structuredContent and the measured result was 1 visit in 90 days.
   assert.ok(s.freshness.recommendation.includes(store.UNLOCK_URL),
     `freshness.recommendation must carry the tagged link:\n${s.freshness.recommendation}`);
+  assert.ok(s.freshness.recommendation.includes(store.APP_STORE_URL),
+    `freshness.recommendation must carry the App Store link:\n${s.freshness.recommendation}`);
 });
 
 test('status carries the link when the export has gone stale (a paused trial stops the writes)', () => {

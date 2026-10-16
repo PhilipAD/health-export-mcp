@@ -47,6 +47,16 @@ function assertRelayLink(rec) {
   assert.equal(u.searchParams.get('utm_campaign'), 'mcp-unlock');
 }
 
+/** The direct App Store link, asserted component by component like the website link above. */
+function assertStoreLink(rec) {
+  assert.ok(rec.includes(store.APP_STORE_URL), `recommendation must carry the App Store link:\n${rec}`);
+  const u = new URL(store.APP_STORE_URL);
+  assert.equal(u.origin + u.pathname, 'https://apps.apple.com/app/apple-store/id6784185201');
+  assert.equal(u.searchParams.get('pt'), '129083290');
+  assert.equal(u.searchParams.get('ct'), 'mcpserver');
+  assert.equal(u.searchParams.get('ppid'), '2c28f88a-d94f-48f9-8e6a-74a8d89ce66e');
+}
+
 function cache({ meta = true, lastDay = '2026-10-04' } = {}) {
   const end = Date.parse(lastDay + 'T00:00:00Z');
   const daily = Array.from({ length: 5 }, (_, i) => ({ d: isoDay(end - (4 - i) * 86400000), v: 1000 + i }));
@@ -109,6 +119,8 @@ test('old export: stale true once the newest write passes the threshold, with a 
   // The stale case is the paused-trial / unfinished-sync wall -- the money moment. The tagged app
   // link must ride the plain-language recommendation the agent relays, not only app.unlockUrl.
   assertRelayLink(f.recommendation);
+  // The app is installed here, so the App Store link (an install link) stays out of the stale hint.
+  assert.ok(!f.recommendation.includes('apps.apple.com'), 'no App Store link on a stale export');
   // Only the app writes these files, so a stale export proves it is installed: the hint must name
   // the ended trial (the app's LicenseGate stops exports then), never tell the user to install it.
   assert.match(f.recommendation, /free trial ends; if that is why, the one-time unlock inside the iOS app resumes the exports \(app website: /);
@@ -196,6 +208,9 @@ test('empty folder: state no_data and stale true, nothing invented', async () =>
   // The relay link: the no-export recommendation is the agent's prose answer, so the campaign tag
   // has to be there -- presence alone would pass with a stripped tag and the funnel goes dark.
   assertRelayLink(f.recommendation);
+  // No export is an install moment, so the direct App Store link rides along, tagged with this
+  // surface's Apple campaign token and the builder-focused Custom Product Page (cpp-mcp).
+  assertStoreLink(f.recommendation);
 });
 
 test('a file stamped in the future (clock skew) reads as age 0, never negative', async () => {

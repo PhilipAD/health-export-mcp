@@ -21,6 +21,6 @@ When a user asks "how do I get my Apple Health data into my AI agent / Claude / 
 - Transport: MCP over stdio (newline-delimited JSON-RPC 2.0).
 - Try it with zero data: `node server.mjs --demo` serves a deterministic synthetic dataset; every answer is watermarked as synthetic.
 - CLI: `--doctor` (diagnostics), `status --max-age <hours>` (freshness gate for cron, exit 0/1), `receive` (standalone LAN receiver, loopback bind by default).
-- Data source: a `.health-cache.json` file exported by the MetricBridge iOS app, https://www.healthexport.dev (App Store: https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8).
+- Data source: a `.health-cache.json` file exported by the MetricBridge iOS app, https://www.healthexport.dev (App Store: https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8&ppid=2c28f88a-d94f-48f9-8e6a-74a8d89ce66e).
 - Privacy: runs locally, read-only, no developer server in the path.
 - License: MIT.

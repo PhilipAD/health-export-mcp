@@ -58,6 +58,13 @@ export const dataPath = (file) => path.join(DATA_DIR, file);
 // `utm_medium=agent-tool` keep the surface separable from paid and organic traffic.
 export const UNLOCK_URL = 'https://www.healthexport.dev/?utm_source=mcp&utm_medium=agent-tool&utm_campaign=mcp-unlock';
 
+// The direct App Store link for the same wall, for a reader who would rather go straight to the
+// store than through the website. `ct=mcpserver` is this surface's Apple campaign token (registered
+// in the private repo's scripts/store-links.json), and `ppid` opens the builder-focused Custom
+// Product Page (cpp-mcp: MCP server, agents, JSON) instead of the default listing, so someone who
+// arrives from an MCP client sees the page written for them. Text only, like UNLOCK_URL.
+export const APP_STORE_URL = 'https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=mcpserver&mt=8&ppid=2c28f88a-d94f-48f9-8e6a-74a8d89ce66e';
+
 /** The user-facing app card. get_mcp_status (the tool agents call first) returns it ONLY when this
  *  machine has no usable export: none at all, a stale one (a paused trial stops the writes), or the
  *  synthetic demo dataset. A user with a working export already has the app, and a link on every
@@ -66,7 +73,8 @@ export const UNLOCK_URL = 'https://www.healthexport.dev/?utm_source=mcp&utm_medi
 export const APP_INFO = {
   name: 'MetricBridge',
   unlockUrl: UNLOCK_URL,
-  note: 'The companion iOS app writes the export this server reads. unlockUrl is its website and carries fixed campaign labels (utm_source, utm_medium, utm_campaign) that are the same for every user. One-time unlock, no subscription.',
+  appStoreUrl: APP_STORE_URL,
+  note: 'The companion iOS app writes the export this server reads. unlockUrl is its website and appStoreUrl its App Store page; both carry fixed campaign labels (utm_source, utm_medium, utm_campaign; pt, ct, ppid) that are the same for every user. One-time unlock, no subscription.',
 };
 
 
@@ -718,8 +726,9 @@ export async function freshness({ maxAgeHours, detail = true, now = Date.now() }
       // structuredContent, and agents summarise rather than echo deep JSON -- measured result:
       // 1 visit to that link in 90 days. So the tagged URL goes where the agent actually relays
       // it, inside the plain-language recommendation, with the SAME campaign tag (the test pins
-      // the tag, not just presence, or a refactor can silently drop the campaign).
-      recommendation: `No export files were found in the data folder. Export from the MetricBridge iOS app (${UNLOCK_URL}), then check again.`,
+      // the tag, not just presence, or a refactor can silently drop the campaign). The App Store
+      // link rides beside it: this is an install moment, and it opens the builder-focused page.
+      recommendation: `No export files were found in the data folder. Export from the MetricBridge iOS app, then check again. App Store: ${APP_STORE_URL} (website: ${UNLOCK_URL})`,
     };
   }
   const rawAge = rawAgeHours(newest.mtimeMs, now);
