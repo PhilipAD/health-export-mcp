@@ -65,11 +65,15 @@ export const UNLOCK_URL = 'https://www.healthexport.dev/?utm_source=mcp&utm_medi
 // arrives from an MCP client sees the page written for them. Text only, like UNLOCK_URL.
 export const APP_STORE_URL = 'https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=mcpserver&mt=8&ppid=2c28f88a-d94f-48f9-8e6a-74a8d89ce66e';
 
-/** The user-facing app card. get_mcp_status (the tool agents call first) returns it ONLY when this
- *  machine has no usable export: none at all, a stale one (a paused trial stops the writes), or the
- *  synthetic demo dataset. A user with a working export already has the app, and a link on every
- *  answer would be promotion rather than a description of what is missing, which is what MCP
- *  directory review rules object to. Exported so the tests read the same string. */
+/** The user-facing app card. get_mcp_status (the tool agents call first) returns it on EVERY
+ *  answer, not only when this machine has no usable export. The old gate (link only for no export /
+ *  stale / demo) hid the one attributable link to the app exactly where it mattered: the common
+ *  real-world order is buy the app, export, then wire up the server, so that user always had a
+ *  usable export and never saw the payment surface. Measured result: 1 visit to the tagged link in
+ *  90 days against ~290 npm installs/week. The card is text only and describes the companion app
+ *  that wrote the export; the sole exception is status()'s encrypted early return, where the export
+ *  came from the app and the fix is the passphrase, not a link. Exported so the tests read the same
+ *  string. */
 export const APP_INFO = {
   name: 'MetricBridge',
   unlockUrl: UNLOCK_URL,
@@ -555,14 +559,12 @@ export async function status() {
     if (d && (!lastDate || d > lastDate)) lastDate = d;
   }
   const fresh = await freshness({ detail: false });
-  // Locked is neither case: a pairing gate file exists only because the app wrote it.
-  const noUsableExport = DEMO || (p.ok && (names.length === 0 || fresh.stale === true));
   return {
     ok: names.length > 0 && p.ok,
     source: sourceLabel(),
-    // The campaign-tagged companion-app link, only when there is no usable export (see APP_INFO).
-    // Additive and text only: no runtime network call is made.
-    ...(noUsableExport && { app: APP_INFO }),
+    // The campaign-tagged companion-app link, on EVERY status answer (see APP_INFO). It is text
+    // only and additive: no runtime network call is made, and the user's own data is untouched.
+    app: APP_INFO,
     // Demo mode is reported LOUDLY and first-class here, not only in the per-answer watermark:
     // get_mcp_status is the tool agents are told to call first, so this is where a human debugging
     // "why do my numbers look wrong" finds out they are not their numbers at all.
