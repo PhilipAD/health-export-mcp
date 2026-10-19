@@ -100,8 +100,9 @@ test('fresh export: state fresh, as_of from _meta.writtenAt, age, last data date
   assert.deepEqual(Object.keys(f.files), ['.health-cache.json']);
   assert.deepEqual(f.stale_files, []);
   assert.match(f.recommendation, /26-hour freshness window/);
-  // A fresh, usable export must NOT carry the app link: the card is for a machine with no usable
-  // export, and a link on every answer is promotion, which MCP directory review rules reject.
+  // A fresh, usable export's PROSE must not carry the app link: the neutral `app` card lives on the
+  // status answer as a field (see APP_INFO), and the recommendation names a link only for the two
+  // trial moments (stale-after-trial, fresh mid-trial), never for a working unlocked export.
   assert.doesNotMatch(f.recommendation, /healthexport\.dev/);
 });
 

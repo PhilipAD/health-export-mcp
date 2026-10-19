@@ -806,10 +806,10 @@ export async function freshness({ maxAgeHours, detail = true, now = Date.now() }
   // The other half of the money moment: a FRESH export written by an app still inside its 7-day
   // free trial (the stale/trialHint path above only reaches a trial that already ENDED). The app
   // stamps `_meta.license` (non-health metadata) onto the cache from 1.x onward; an older cache
-  // simply lacks it and this degrades to the status quo. We add ONE sentence to the prose -- no
-  // app card, because a working export already means the app is installed and a card would be
-  // promotion (the directory-review rule) rather than a description of what is missing: persistence
-  // after the trial lapses.
+  // simply lacks it and this degrades to the status quo. We add ONE sentence to the prose. The
+  // neutral `app` card is returned on every status answer regardless (see APP_INFO); the trial
+  // wording itself appears only here, only when the marker says trial, never for an unlocked app
+  // or an older export without the marker.
   // Read the marker only when the cache is readable: cacheMeta() re-reads the file, which throws
   // for an encrypted export without its passphrase (status() has its own early return for that).
   let license = null;
