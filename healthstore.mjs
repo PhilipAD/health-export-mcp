@@ -750,8 +750,12 @@ export async function freshness({ maxAgeHours, detail = true, now = Date.now() }
   // app card, because a working export already means the app is installed and a card would be
   // promotion (the directory-review rule) rather than a description of what is missing: persistence
   // after the trial lapses.
-  const license = cacheMeta()?.license;
-  const midTrial = !stale && !cacheReadError && license?.state === 'trial' && Number.isInteger(license?.daysRemaining);
+  // Read the marker only when the cache is readable: cacheMeta() re-reads the file, which throws
+  // for an encrypted export without its passphrase (status() has its own early return for that).
+  let license = null;
+  if (!stale && !cacheReadError) { try { license = cacheMeta()?.license ?? null; } catch { license = null; } }
+  const midTrial = license?.state === 'trial' && Number.isInteger(license?.daysRemaining) && license.daysRemaining >= 0;
+  const trialEnds = midTrial ? (license.daysRemaining === 0 ? 'ends today' : `ends in ${license.daysRemaining} day${license.daysRemaining === 1 ? '' : 's'}`) : '';
   const readNote = cacheReadError
     ? ` The daily cache could not be read (${cacheReadError}), so data tools will fail until that is fixed; run get_mcp_status for the details.`
     : '';
@@ -778,7 +782,7 @@ export async function freshness({ maxAgeHours, detail = true, now = Date.now() }
         + (trialHint ? ` MetricBridge also stops exporting when its free trial ends; if that is why, the one-time unlock inside the iOS app resumes the exports (app website: ${UNLOCK_URL}).` : '')
       : `Within the ${threshold}-hour freshness window: the newest export landed ${age} hours ago.`
         + (midTrial
-          ? ` MetricBridge's free trial ends in ${license.daysRemaining} day${license.daysRemaining === 1 ? '' : 's'}; the one-time unlock inside the iOS app keeps exports running after that (app website: ${UNLOCK_URL}).`
+          ? ` MetricBridge's free trial ${trialEnds}; the one-time unlock inside the iOS app keeps exports running after that (app website: ${UNLOCK_URL}).`
           : ''))
       + readNote,
   };

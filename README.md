@@ -239,6 +239,11 @@ Wellness-scoped and end-user-directed; no clinical or HIPAA work.
 
 ## Privacy & security
 
+The one non-health thing the server reads from the export is `_meta.license`, a marker the app writes
+with exactly two shapes: `{"state": "trial", "daysRemaining": N}` or `{"state": "unlocked"}`. A fresh
+export from a trial adds one sentence to `get_freshness` naming when the trial ends; an unlocked export
+adds nothing. No network call is involved and nothing is sent anywhere.
+
 - **Read-only.** The server only reads your exported data, it never touches HealthKit and never writes back.
 - **Local-first.** It runs on your machine over stdio. There is **no developer server** in the path.
 - **Optional pairing.** Set `PAIRING_SECRET` to the code the iOS app shows (Settings → Agent pairing) to gate access.
