@@ -209,6 +209,18 @@ node server.mjs --help
 
 ---
 
+## Building a wellness or coaching product?
+
+This server reads a file the MetricBridge iOS app writes **on the user's own device**, with no central
+health-data processor in the path. The same app can POST signed JSON (Standard Webhooks v1, published
+JSON Schemas) straight to **your** endpoint, so your users bring their own Apple Health to your product
+without an SDK in your app and without any vendor server holding the data. The offer, flat pricing and
+boundaries: [healthexport.dev/platforms](https://www.healthexport.dev/platforms/). The integration guide
+and the zero-dependency conformance kit: [healthexport.dev/docs/platforms](https://www.healthexport.dev/docs/platforms/).
+Wellness-scoped and end-user-directed; no clinical or HIPAA work.
+
+---
+
 ## The app that feeds it
 
 <p align="center">
