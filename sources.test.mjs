@@ -73,3 +73,43 @@ test('data answers pass src/by through at day granularity', async () => {
   assert.equal(p.src, 'Apple Watch');
   assert.deepEqual(p.by, { 'Apple Watch': 63, Oura: 61 });
 });
+
+test('get_mcp_status flags the sources file and the attribution state', async () => {
+  const s = await store.status();
+  assert.equal(s.contextFiles.sources, true);
+  assert.equal(s.sourceAttribution, true);
+});
+
+test('sleep sessions and workouts carry the minor-2 attribution keys through unchanged', async () => {
+  fs.writeFileSync(path.join(DIR, 'health-sessions.json'), JSON.stringify({
+    schema: 1, app: '1.16', writtenAt: '2026-10-19T12:00:00Z',
+    sessions: [{ id: 'slp_1', day: '2026-10-18', start: '2026-10-17T23:10:00+01:00', end: '2026-10-18T06:40:00+01:00', asleep: 7.1,
+      stages: { core: 4.0, deep: 1.2, rem: 1.9 }, stageSource: 'Oura', sourceLabels: ['Oura', 'Apple Watch'],
+      stagesBySource: { Oura: { core: 4.0, deep: 1.2, rem: 1.9 }, 'Apple Watch': { core: 4.3, deep: 0.9, rem: 1.8 } } }],
+  }));
+  fs.writeFileSync(path.join(DIR, '.health-workouts-cache.json'), JSON.stringify([
+    { id: 'w1', name: 'Running', activityType: 37, start: '2026-10-18T07:00:00+01:00', end: '2026-10-18T07:40:00+01:00', duration: 2400,
+      source: 'Apple Watch', alsoRecordedBy: [{ id: 'w1b', source: 'Strava', start: '2026-10-18T07:00:30+01:00', end: '2026-10-18T07:39:00+01:00', duration: 2310 }] },
+  ]));
+  const ev = await import('./events.mjs');
+  const ss = await ev.getSleepSessions({ day: '2026-10-18' });
+  assert.equal(ss.sessions[0].stageSource, 'Oura');
+  assert.deepEqual(ss.sessions[0].sourceLabels, ['Oura', 'Apple Watch']);
+  assert.equal(ss.sessions[0].stagesBySource['Apple Watch'].deep, 0.9);
+  const ws = await store.getWorkouts({ start: '2026-10-18', end: '2026-10-18' });
+  assert.equal(ws.workouts[0].source, 'Apple Watch');
+  assert.equal(ws.workouts[0].alsoRecordedBy[0].source, 'Strava');
+});
+
+test('the sources block carries the workouts summary and the extra day counts when the file has them', async () => {
+  const f = JSON.parse(fs.readFileSync(path.join(DIR, 'health-sources.json'), 'utf8'));
+  f.workouts = { primaryBySource: { 'Apple Watch': 3 }, duplicateCopiesRetained: 1, priority: ['watch', 'band', 'ring', 'phone', 'app'] };
+  f.metrics.step_count = { rule: 'merged', mergedDays: 5, daysBySource: { 'Apple Watch': 5, iPhone: 5 } };
+  f.metrics.heart_rate.alsoRecordedDays = 1;
+  fs.writeFileSync(path.join(DIR, 'health-sources.json'), JSON.stringify(f));
+  // readJSONCached memoizes on (mtime, size): the rewrite above changes the size, so it re-reads.
+  const r = await store.resolveMetric({ name: 'steps' });
+  assert.equal(r.sources.workouts.duplicateCopiesRetained, 1);
+  assert.equal(r.sources.metrics.step_count.mergedDays, 5);
+  assert.equal(r.sources.metrics.heart_rate.alsoRecordedDays, 1);
+});

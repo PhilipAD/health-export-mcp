@@ -290,12 +290,15 @@ export function sourcesBlock() {
       ...(m.comparableAcrossSources === false && { comparableAcrossSources: false }),
       ...(m.daysBySource && { daysBySource: m.daysBySource }),
       ...(m.multiSourceDays != null && { multiSourceDays: m.multiSourceDays }),
+      ...(m.alsoRecordedDays != null && { alsoRecordedDays: m.alsoRecordedDays }),
+      ...(m.mergedDays != null && { mergedDays: m.mergedDays }),
     };
   }
   return {
     sourceCount: s.sourceCount,
     sources: (s.sources ?? []).map((x) => ({ label: x.label, class: x.class, days: x.days, firstDay: x.firstDay, lastDay: x.lastDay })),
     metrics,
+    ...(s.workouts && typeof s.workouts === 'object' && { workouts: s.workouts }),
     ...(s.rules && { rules: s.rules }),
   };
 }
@@ -615,14 +618,20 @@ export async function status() {
     // Additive presence flags for the optional context files, so an agent knows which of the
     // context tools can answer before calling them. Absence means "not exported", never "none".
     contextFiles: DEMO
-      ? { events: true, profile: true, sessions: true, cycles: true, days: true }
+      ? { events: true, profile: true, sessions: true, cycles: true, days: true, sources: false }
       : {
           events: !!ev.loadEventsFile(),
           profile: fileExists('health-profile.json'),
           sessions: fileExists('health-sessions.json'),
           cycles: fileExists('health-cycles.json'),
           days: !!ev.loadDaysFile(),
+          // health-sources.json (schema minor 2): which devices feed the export and which won each
+          // metric. False means the app build that wrote this export predates source attribution.
+          sources: fileExists('health-sources.json'),
         },
+    // Additive: true when daily points carry src/by or health-sources.json exists, so an agent
+    // knows before calling resolve_metric whether per-source disagreement is visible in this export.
+    sourceAttribution: hasSourceAttribution(),
     metrics: names.sort(),
   };
 }
