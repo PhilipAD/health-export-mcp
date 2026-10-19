@@ -57,7 +57,7 @@ const ANNOTATIONS = { readOnlyHint: true, idempotentHint: true, openWorldHint: f
 const TOOLS = [
   {
     name: 'get_mcp_status',
-    description: 'Health check: data source, how many metrics/workouts are available, which optional context files exist, the most recent data date, and a `recompute` summary of past days rebuilt after late-arriving samples (with any days too old to rebuild). Call this first to confirm the bridge is connected. When there is no usable export (none found, a stale one, or demo data), the result also includes `app.unlockUrl` and `app.appStoreUrl`, the website and App Store page of the companion iOS app that writes the export; both links carry fixed campaign attribution labels.',
+    description: 'Health check: data source, how many metrics/workouts are available, which optional context files exist, the most recent data date, and a `recompute` summary of past days rebuilt after late-arriving samples (with any days too old to rebuild). Call this first to confirm the bridge is connected. The result also includes `app.unlockUrl` and `app.appStoreUrl`, the website and App Store page of the companion iOS app that writes the export; both links carry fixed campaign attribution labels.',
     inputSchema: { type: 'object', properties: {} },
     handler: () => store.status(),
   },

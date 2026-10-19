@@ -233,11 +233,14 @@ test('intraday: a corrupt file degrades to available:false, not a crash', async 
 
 // The install-intent -> unlock middle was dark: npm installs and clones ran 40-60x the unlocks and
 // no tool answer carried an attributable link to the app. get_mcp_status is the tool every agent is
-// told to call first, so that is where the tagged link goes, but ONLY for a machine with no usable
-// export: a link on every answer is promotion, which MCP directory review rules reject. Assert the
-// TAG, not just the presence, or a refactor can silently drop the campaign and the funnel goes
-// dark again with a green suite. Each case is a fresh process because the data dir and demo flag
-// are read once at import.
+// told to call first, so that is where the tagged link goes, now on EVERY answer. The old gate
+// (link only for no export / stale / demo) hid it exactly where it mattered: the common order is
+// buy the app, export, then wire up the server, so that user always had a usable export and never
+// saw a payment surface. Measured: 1 visit in 90 days vs ~290 installs/week. Assert the TAG, not
+// just the presence, or a refactor can silently drop the campaign and the funnel goes dark again
+// with a green suite. Each case is a fresh process because the data dir and demo flag are read once
+// at import. The sole exception is status()'s encrypted early return, where the export came from the
+// app and the fix is the passphrase, not a link (see envelope.test.mjs and freshness.test.mjs).
 const statusIn = (env) => JSON.parse(execFileSync(process.execPath, ['--input-type=module', '-e',
   `import(${JSON.stringify(path.join(HERE, 'healthstore.mjs'))}).then(async (s) => console.log(JSON.stringify(await s.status())))`],
   { env: { PATH: process.env.PATH, ...env }, encoding: 'utf8' }));
@@ -257,11 +260,11 @@ const assertTagged = (app) => {
   assert.doesNotMatch(app.note, /\b(share|tell|give|send|must|always)\b/i, 'the note describes, it does not instruct the agent');
 };
 
-test('status omits the companion-app link when a fresh export is present', async () => {
+test('status carries the campaign-tagged companion-app link even when a fresh export is present', async () => {
   const s = await store.status();
   assert.equal(s.ok, true);
   assert.equal(s.freshness.stale, false);
-  assert.equal('app' in s, false);
+  assertTagged(s.app);
 });
 
 test('status carries the campaign-tagged companion-app link when there is no export', () => {
@@ -296,8 +299,8 @@ test('a fresh mid-trial export names the trial and relays the unlock link (the m
   // A working export written by an app still inside its 7-day trial. The stale path above only
   // reaches a trial that already ENDED; this is the user whose export still works and whose trial
   // is about to lapse -- the one un-nudged payer moment. `_meta.license` is the non-health marker
-  // the iOS app stamps; assert the prose carries the tagged link but still omits the app card (a
-  // working export means the app is installed; a card would be promotion, not "what is missing").
+  // the iOS app stamps; assert the prose carries the tagged link, and that the status answer does
+  // too (the app card is now unconditional, so this fresh-trial user sees the payment surface).
   const trial = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-trial-'));
   const f = path.join(trial, '.health-cache.json');
   fs.writeFileSync(f, JSON.stringify({
@@ -306,7 +309,7 @@ test('a fresh mid-trial export names the trial and relays the unlock link (the m
   }));
   const s = statusIn({ HEALTH_DATA_DIR: trial });
   assert.equal(s.freshness.stale, false);
-  assert.equal('app' in s, false, 'a working export must not regress to the app card');
+  assertTagged(s.app);
   assert.match(s.freshness.recommendation, /trial ends in 3 days/);
   assert.ok(s.freshness.recommendation.includes(store.UNLOCK_URL),
     `mid-trial freshness.recommendation must carry the tagged link:\n${s.freshness.recommendation}`);

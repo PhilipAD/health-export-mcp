@@ -248,7 +248,7 @@ adds nothing. No network call is involved and nothing is sent anywhere.
 - **Local-first.** It runs on your machine over stdio. There is **no developer server** in the path.
 - **Optional pairing.** Set `PAIRING_SECRET` to the code the iOS app shows (Settings → Agent pairing) to gate access.
 - **Encrypted exports (optional).** If you switch on Export encryption in the iOS app, set `HEALTH_EXPORT_PASSPHRASE` (or `HEALTH_EXPORT_PASSPHRASE_FILE`) to the same passphrase and the server decrypts on your machine. See [Encrypted exports](#encrypted-exports).
-- **No telemetry.** The server makes no network requests. When it finds no usable export (none yet, a stale one, or `--demo`), `get_mcp_status` includes one static link to the companion app's website. That link carries fixed campaign labels (`utm_source=mcp`, `utm_medium=agent-tool`, `utm_campaign=mcp-unlock`) that are identical for every user and contain nothing about you or your data; they only count if you choose to open it.
+- **No telemetry.** The server makes no network requests. `get_mcp_status` always includes one static link to the companion app's website (and its App Store page), so the bridge is attributable back to install. Both links carry fixed campaign labels (`utm_source=mcp`, `utm_medium=agent-tool`, `utm_campaign=mcp-unlock`; `ct=mcpserver`, `ppid=…`) that are identical for every user and contain nothing about you or your data; they only count if you choose to open one.
 - **Auditable.** Zero dependencies and a few hundred lines of readable JavaScript, read every line.
 - **Signed releases.** Hosted artifacts are minisign-signed and checksummed, see [Verifying releases](#verifying-releases).
 
