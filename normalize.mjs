@@ -372,3 +372,18 @@ export const SOURCE_MERGE = {
   disagreementDetection: 'not_available',
   note: 'Each daily value in this export is the single figure Apple Health produces after merging every source on the device (for example an iPhone and a Watch counting the same steps). The export holds one value per metric per day, not one per source, so it cannot show whether two sources disagreed, and nothing here adjusts values to make sources agree.',
 };
+
+/** The sourceMerge surface for an export that DOES carry per-source attribution (schema minor 2,
+ *  written by app builds shipping Track B3 source reconciliation). Each daily point then carries
+ *  `src` (the source whose value won) and `by` (every source's own value when two or more recorded
+ *  the day), and a health-sources.json beside the cache lists which devices feed the export, which
+ *  source wins each metric, and the priority rules. Disagreement between sources is then visible
+ *  rather than pre-merged out of sight, so the answer stops claiming it cannot be seen. */
+export function sourceMerge(hasAttribution) {
+  if (!hasAttribution) return SOURCE_MERGE;
+  return {
+    perSourceValuesInExport: true,
+    disagreementDetection: 'available',
+    note: 'This export records per-source values: each daily point carries `src` (the source whose value was used) and, when two or more sources recorded the day, `by` (every source that recorded, the winner included). health-sources.json lists which devices feed the export, which source wins each metric and the priority rules, so an agent can say which source a value came from and where two sources disagreed.',
+  };
+}

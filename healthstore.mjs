@@ -258,6 +258,51 @@ export function cacheMeta() {
   return raw && typeof raw._meta === 'object' ? raw._meta : null;
 }
 
+/** The per-source attribution file (Track B3, cache schema minor 2): which devices feed the
+ *  export, which source won each metric, and the priority rules. Absent before app builds that
+ *  ship source reconciliation, so every consumer treats it as optional and degrades to today's
+ *  single-source behaviour when it is not there. */
+export function loadSources() {
+  if (DEMO || !pairing().ok) return null;
+  return readJSONCached(path.join(DATA_DIR, 'health-sources.json'), null);
+}
+
+/** True when this export carries per-source attribution: either the app stamped schemaMinor 2 onto
+ *  the cache (daily points then carry `src`/`by`) or a health-sources.json is present. Both are
+ *  additive and independent, so either is enough to flip the sourceMerge surface from the
+ *  "per-source values are not in the export" baseline to "available". */
+export function hasSourceAttribution() {
+  if (DEMO || !pairing().ok) return false;
+  if (Number(cacheMeta()?.schemaMinor ?? 0) >= 2) return true;
+  return fileExists('health-sources.json');
+}
+
+/** Compact per-source summary for tool answers (schema minor 2). Null when there is no attribution,
+ *  so an answer stays byte-for-byte what a pre-B3 reader produced when the export predates it. */
+export function sourcesBlock() {
+  const s = loadSources();
+  if (!s || typeof s !== 'object') return null;
+  const metrics = {};
+  for (const [name, m] of Object.entries(s.metrics ?? {})) {
+    metrics[name] = {
+      rule: m.rule,
+      ...(m.priority && { priority: m.priority }),
+      ...(m.comparableAcrossSources === false && { comparableAcrossSources: false }),
+      ...(m.daysBySource && { daysBySource: m.daysBySource }),
+      ...(m.multiSourceDays != null && { multiSourceDays: m.multiSourceDays }),
+      ...(m.alsoRecordedDays != null && { alsoRecordedDays: m.alsoRecordedDays }),
+      ...(m.mergedDays != null && { mergedDays: m.mergedDays }),
+    };
+  }
+  return {
+    sourceCount: s.sourceCount,
+    sources: (s.sources ?? []).map((x) => ({ label: x.label, class: x.class, days: x.days, firstDay: x.firstDay, lastDay: x.lastDay })),
+    metrics,
+    ...(s.workouts && typeof s.workouts === 'object' && { workouts: s.workouts }),
+    ...(s.rules && { rules: s.rules }),
+  };
+}
+
 // ---- Late-arrival recompute provenance (cache schema minor 1, docs/SCHEMA-CONTRACTS.md s.9) ----
 // The app re-reads only the trailing days on each run. When Apple Health later receives samples
 // dated BEFORE that window (a scale or toothbrush syncing after a gap, a back-logged entry), or
@@ -415,7 +460,13 @@ function rollUp(points, granularity, cumulative) {
   // A day rebuilt after late or deleted samples carries `recomputed_at`; an untouched day carries
   // nothing extra, so the two are distinguishable point by point (schema minor 1).
   if (granularity === 'day') {
-    return points.map((p) => ({ date: p.d, value: round(p.v), ...(typeof p.r === 'string' && { recomputed_at: p.r }) }));
+    return points.map((p) => ({
+      date: p.d,
+      value: round(p.v),
+      ...(typeof p.r === 'string' && { recomputed_at: p.r }),
+      ...(typeof p.src === 'string' && { src: p.src }),
+      ...(p.by && typeof p.by === 'object' && !Array.isArray(p.by) && { by: p.by }),
+    }));
   }
   const buckets = new Map();
   for (const p of points) {
@@ -567,14 +618,20 @@ export async function status() {
     // Additive presence flags for the optional context files, so an agent knows which of the
     // context tools can answer before calling them. Absence means "not exported", never "none".
     contextFiles: DEMO
-      ? { events: true, profile: true, sessions: true, cycles: true, days: true }
+      ? { events: true, profile: true, sessions: true, cycles: true, days: true, sources: false }
       : {
           events: !!ev.loadEventsFile(),
           profile: fileExists('health-profile.json'),
           sessions: fileExists('health-sessions.json'),
           cycles: fileExists('health-cycles.json'),
           days: !!ev.loadDaysFile(),
+          // health-sources.json (schema minor 2): which devices feed the export and which won each
+          // metric. False means the app build that wrote this export predates source attribution.
+          sources: fileExists('health-sources.json'),
         },
+    // Additive: true when daily points carry src/by or health-sources.json exists, so an agent
+    // knows before calling resolve_metric whether per-source disagreement is visible in this export.
+    sourceAttribution: hasSourceAttribution(),
     metrics: names.sort(),
   };
 }
@@ -601,6 +658,7 @@ export const DATA_FILES = [
   'health-sessions.json',
   'health-cycles.json',
   'health-days.json',
+  'health-sources.json',
 ];
 
 /** One daily automation run plus two hours of slack: iOS schedules background work loosely, so a
@@ -1431,6 +1489,8 @@ export async function resolveMetric({ name, value, unit } = {}) {
   const present = unlocked ? await loadMetrics() : null;
   const inExport = (id) => (present ? !!present[id] : null);
   const lockedNote = unlocked ? undefined : 'Pairing is locked, so whether each metric is in this export is unknown (null). The naming and unit table itself does not depend on your data.';
+  const sourceMerge = norm.sourceMerge(hasSourceAttribution());
+  const sources = sourcesBlock();
   const r = norm.lookup(requested);
   // A name the export holds but the catalog does not (an older or newer app's metric) is still a
   // real metric: report it as present with its stored unit rather than "unknown".
@@ -1442,7 +1502,7 @@ export async function resolveMetric({ name, value, unit } = {}) {
       unit: m.unit || '', cumulative: !!m.cumulative, inExport: true, coverage: coverageOf(m),
       note: 'This metric is in the export under exactly this name but is not in this server\'s canonical table (the export may come from a newer app or another tool), so no aliases or unit variants are listed for it.'
         + (r.status === 'resolved' ? ` The table maps this spelling to "${r.metric}", which is a separate entry; the data tools use the exact name "${requested}".` : ''),
-      sourceMerge: norm.SOURCE_MERGE,
+      sourceMerge,
     };
   }
   if (r.status !== 'resolved') {
@@ -1481,7 +1541,8 @@ export async function resolveMetric({ name, value, unit } = {}) {
       unitMismatch: `The export stores this metric in "${present[row.id].unit || ''}", not the canonical "${row.unit}". Values are served exactly as stored; nothing was converted.`,
     }),
     ...(row.id === 'heart_rate_variability' && { measureNote: 'SDNN in milliseconds, as Apple Health records it. Not comparable with RMSSD values from other devices.' }),
-    sourceMerge: norm.SOURCE_MERGE,
+    sourceMerge,
+    ...(sources && { sources }),
     ...(lockedNote && { lockedNote }),
   };
   if (value != null) out.conversion = { input: { value, unit: String(unit) }, ...norm.convertToCanonical(row.id, value, unit) };
