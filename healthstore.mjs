@@ -743,6 +743,15 @@ export async function freshness({ maxAgeHours, detail = true, now = Date.now() }
   // be read (an encrypted export without its passphrase): the app wrote that file, so the fix is
   // the passphrase, not the app -- the same rule as status()'s encrypted early return.
   const trialHint = stale && rawAge > Math.max(staleAfterHours(), DEFAULT_STALE_AFTER_HOURS) && !cacheReadError;
+  // The other half of the money moment: a FRESH export written by an app still inside its 7-day
+  // free trial (the stale/trialHint path above only reaches a trial that already ENDED). The app
+  // stamps `_meta.license` (non-health metadata) onto the cache from 1.x onward; an older cache
+  // simply lacks it and this degrades to the status quo. We add ONE sentence to the prose -- no
+  // app card, because a working export already means the app is installed and a card would be
+  // promotion (the directory-review rule) rather than a description of what is missing: persistence
+  // after the trial lapses.
+  const license = cacheMeta()?.license;
+  const midTrial = !stale && !cacheReadError && license?.state === 'trial' && Number.isInteger(license?.daysRemaining);
   const readNote = cacheReadError
     ? ` The daily cache could not be read (${cacheReadError}), so data tools will fail until that is fixed; run get_mcp_status for the details.`
     : '';
@@ -767,7 +776,10 @@ export async function freshness({ maxAgeHours, detail = true, now = Date.now() }
       // prose is what makes the agent's answer carry the tagged link, not just the nested field.
       ? `The newest export is ${age} hours old, older than the ${threshold}-hour window. Answers only cover data up to ${lastDataDate ?? 'the last export'}; if current numbers matter, ask the user to open MetricBridge or run an export, then check again.`
         + (trialHint ? ` MetricBridge also stops exporting when its free trial ends; if that is why, the one-time unlock inside the iOS app resumes the exports (app website: ${UNLOCK_URL}).` : '')
-      : `Within the ${threshold}-hour freshness window: the newest export landed ${age} hours ago.`)
+      : `Within the ${threshold}-hour freshness window: the newest export landed ${age} hours ago.`
+        + (midTrial
+          ? ` MetricBridge's free trial ends in ${license.daysRemaining} day${license.daysRemaining === 1 ? '' : 's'}; the one-time unlock inside the iOS app keeps exports running after that (app website: ${UNLOCK_URL}).`
+          : ''))
       + readNote,
   };
 }

@@ -292,6 +292,39 @@ test('status carries the link when the export has gone stale (a paused trial sto
     `stale freshness.recommendation must carry the tagged link:\n${s.freshness.recommendation}`);
 });
 
+test('a fresh mid-trial export names the trial and relays the unlock link (the money moment)', () => {
+  // A working export written by an app still inside its 7-day trial. The stale path above only
+  // reaches a trial that already ENDED; this is the user whose export still works and whose trial
+  // is about to lapse -- the one un-nudged payer moment. `_meta.license` is the non-health marker
+  // the iOS app stamps; assert the prose carries the tagged link but still omits the app card (a
+  // working export means the app is installed; a card would be promotion, not "what is missing").
+  const trial = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-trial-'));
+  const f = path.join(trial, '.health-cache.json');
+  fs.writeFileSync(f, JSON.stringify({
+    _meta: { schema: 1, app: '1.9.0', writtenAt: new Date().toISOString(), license: { state: 'trial', daysRemaining: 3 } },
+    step_count: { unit: 'count', cumulative: true, daily: [{ d: '2026-01-01', v: 1 }] },
+  }));
+  const s = statusIn({ HEALTH_DATA_DIR: trial });
+  assert.equal(s.freshness.stale, false);
+  assert.equal('app' in s, false, 'a working export must not regress to the app card');
+  assert.match(s.freshness.recommendation, /trial ends in 3 days/);
+  assert.ok(s.freshness.recommendation.includes(store.UNLOCK_URL),
+    `mid-trial freshness.recommendation must carry the tagged link:\n${s.freshness.recommendation}`);
+});
+
+test('an unlocked fresh export carries no trial note (paid users are never nudged)', () => {
+  const paid = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-paid-'));
+  const f = path.join(paid, '.health-cache.json');
+  fs.writeFileSync(f, JSON.stringify({
+    _meta: { schema: 1, app: '1.9.0', writtenAt: new Date().toISOString(), license: { state: 'unlocked' } },
+    step_count: { unit: 'count', cumulative: true, daily: [{ d: '2026-01-01', v: 1 }] },
+  }));
+  const s = statusIn({ HEALTH_DATA_DIR: paid });
+  assert.equal(s.freshness.stale, false);
+  assert.doesNotMatch(s.freshness.recommendation, /trial/i);
+  assert.doesNotMatch(s.freshness.recommendation, /unlock/i);
+});
+
 test('status carries the link in demo mode, where no real export is read', () => {
   const s = statusIn({ HEALTH_DEMO: '1' });
   assert.equal(s.demo, true);
