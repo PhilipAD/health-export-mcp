@@ -1,6 +1,7 @@
 node_modules/
 .DS_Store
 *.log
+.npmrc
 .health-cache.json
 .health-workouts-cache.json
 # Exception: the ENCRYPTED cross-language fixture (synthetic values, sealed with a test passphrase).
