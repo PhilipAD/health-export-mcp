@@ -14,7 +14,7 @@
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "health-export-mcp",
-      "version": "1.7.0",
+      "version": "1.7.1",
       "transport": {
         "type": "stdio"
       }
@@ -22,7 +22,7 @@
     {
       "registryType": "mcpb",
       "identifier": "https://github.com/PhilipAD/health-export-mcp/releases/download/v1.7.0/health-export.mcpb",
-      "version": "1.7.0",
+      "version": "1.7.1",
       "fileSha256": "167102086bcf5551fadc3ac56d8745088279f4ed71388b425a70433348dd1fe9",
       "transport": {
         "type": "stdio"
