@@ -2,7 +2,7 @@
 
 **Query your own Apple Health data from any MCP client.**
 
-`health-export-mcp` is an open-source, **zero-dependency** [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server. It reads the Apple Health / HealthKit export on your own machine and answers your agent's questions from it: **190 metrics**, **16 tools** and **22 prompts**, as clean JSON. Read-only, local-first, no account, and no developer server in the path.
+`health-export-mcp` is an open-source, **zero-dependency** [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server. It reads the Apple Health / HealthKit export on your own machine and answers your agent's questions from it: **194 metrics**, **16 tools** and **22 prompts**, as clean JSON. Read-only, local-first, no account, and no developer server in the path.
 
 **One command (Claude Code):**
 
@@ -26,7 +26,7 @@ Then ask: *"Use health-export: compare my HRV this week vs last week."* Using Cl
   <img alt="zero dependencies" src="https://img.shields.io/badge/dependencies-0-2ea44f" />
   <img alt="Node ≥18" src="https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white" />
   <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue" />
-  <img alt="works with Claude, Cursor, ChatGPT, OpenClaw, Hermes" src="https://img.shields.io/badge/works_with-Claude_·_Cursor_·_ChatGPT_·_OpenClaw_·_Hermes-111" />
+  <img alt="works with Claude, Cursor, ChatGPT, OpenClaw, Hermes" src="https://img.shields.io/badge/works_with-Claude_·_Cursor_·_opencode_·_VS_Code_·_OpenClaw_·_Hermes-111" />
 </p>
 
 <p align="center">
@@ -160,7 +160,7 @@ Full reference with request/response examples: **[healthexport.dev/mcp](https://
 | `correlate_metrics` | Pearson correlation between two metrics with a 0..3 day lag. Association, not causation, always stated. |
 | `resolve_metric` | Canonical name and unit for any spelling (`steps`, `StepCount`, `Body Weight`, `hrv`), unit variants with exact formulas, an optional `{value, unit}` conversion, and whether the export holds it. Ambiguous words come back with candidates, never guessed. The data tools accept the same aliases and report `resolvedFrom`. When the export carries per-source attribution (app builds that write `src`/`by` on daily points and a `health-sources.json`, cache schema minor 2), the answer adds a `sources` block naming the devices that fed the export, which one won each metric and the priority rules, and `sourceMerge` reports disagreement as visible; older exports report it as not available. |
 
-**Coverage:** 190 Apple Health metrics across activity, heart, HRV, mobility, respiratory, body, sleep, hearing, and nutrition, plus workouts. Data answers carry honest `coverage` blocks, and single-metric answers list logged events inside the window as `segmentBoundaries` so an average across a medication start or life change cannot masquerade as one regime.
+**Coverage:** 194 Apple Health metrics across activity, heart, HRV, mobility, respiratory, body, sleep, hearing, and nutrition, plus workouts. Data answers carry honest `coverage` blocks, and single-metric answers list logged events inside the window as `segmentBoundaries` so an average across a medication start or life change cannot masquerade as one regime.
 
 ### Data files
 
@@ -205,7 +205,7 @@ node server.mjs --help
 - **Training-load analysis**, pull workouts, VO₂ max, and heart-rate trends so your agent can flag overreaching, plot fitness progression, and pace a training block.
 - **Sleep correlations**, have your agent correlate deep-sleep duration against steps, caffeine, late workouts, or screen time to find what actually moves your sleep quality.
 - **Quantified-self dashboards**, feed clean JSON for any metric set and date range straight into a notebook, spreadsheet, or LLM-built dashboard for your own self-tracking.
-- **Personal research & experiments**, run n-of-1 experiments (supplement, routine, or protocol changes) and let an agent compare before/after periods across 190 metrics to see what changed.
+- **Personal research & experiments**, run n-of-1 experiments (supplement, routine, or protocol changes) and let an agent compare before/after periods across 194 metrics to see what changed.
 
 ---
 
@@ -226,7 +226,7 @@ Wellness-scoped and end-user-directed; no clinical or HIPAA work.
 <p align="center">
   <img src="assets/screenshot-dashboard.png" alt="MetricBridge dashboard" width="240" />
   &nbsp;&nbsp;
-  <img src="assets/screenshot-metrics.png" alt="190 Apple Health metrics" width="240" />
+  <img src="assets/screenshot-metrics.png" alt="194 Apple Health metrics" width="240" />
   &nbsp;&nbsp;
   <img src="assets/screenshot-destinations.png" alt="Export to iCloud, folder, LAN, or webhook" width="240" />
 </p>
@@ -380,13 +380,13 @@ Other Apple Health MCP servers in the ecosystem, worth a look depending on your 
 - **[the-momentum/apple-health-mcp-server](https://github.com/the-momentum/apple-health-mcp-server)**, an MCP server for analyzing Apple Health data exported from the Health app.
 - **[HealthyApps/health-auto-export-mcp-server](https://github.com/HealthyApps/health-auto-export-mcp-server)**, an MCP server for the Health Auto Export app's data.
 
-**How `health-export-mcp` differs:** zero dependencies, clean structured JSON, 190 Apple Health metrics, and the widest agent support (Claude, Cursor, opencode, OpenClaw, Hermes, VS Code natively, plus ChatGPT/Gemini/Grok/n8n/Home Assistant via webhook).
+**How `health-export-mcp` differs:** zero dependencies, clean structured JSON, 194 Apple Health metrics, and the widest agent support (Claude, Cursor, opencode, OpenClaw, Hermes, VS Code natively, plus ChatGPT/Gemini/Grok/n8n/Home Assistant via webhook).
 
 ---
 
 ## Related
 
-- **Companion iOS app:** [MetricBridge](https://www.healthexport.dev), exports 190 Apple Health metrics to your agent, automatically.
+- **Companion iOS app:** [MetricBridge](https://www.healthexport.dev), exports 194 Apple Health metrics to your agent, automatically.
 - **Model Context Protocol:** [modelcontextprotocol.io](https://modelcontextprotocol.io)
 - **Per-agent setup:** [AGENTS.md](AGENTS.md)
 

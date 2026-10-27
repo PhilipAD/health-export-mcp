@@ -1,9 +1,9 @@
 {
   "name": "health-export-mcp",
   "mcpName": "io.github.PhilipAD/health-export-mcp",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "type": "module",
-  "description": "Query your Apple Health data from any AI agent. An MCP server for Apple Health / HealthKit — 190 metrics, read-only, local-first, zero dependencies. npx -y health-export-mcp.",
+  "description": "Query your Apple Health data from any AI agent. An MCP server for Apple Health / HealthKit: 194 metrics, read-only, local-first, zero dependencies. npx -y health-export-mcp.",
   "keywords": [
     "apple-health",
     "apple-health-export",
