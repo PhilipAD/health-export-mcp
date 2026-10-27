@@ -24,7 +24,7 @@
     "type": "git",
     "url": "https://github.com/PhilipAD/health-export-mcp.git"
   },
-  "homepage": "https://www.healthexport.dev",
+  "homepage": "https://www.healthexport.dev/mcp/",
   "license": "MIT",
   "installCommand": "npx -y health-export-mcp --demo",
   "runtime": {

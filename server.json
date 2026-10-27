@@ -2,7 +2,7 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.PhilipAD/health-export-mcp",
   "title": "MetricBridge Apple Health",
-  "description": "Apple Health for any MCP agent: 194 metrics, 16 read-only tools, local stdio, zero dependencies.",
+  "description": "Ask your agent about your own Apple Health data: 194 metrics, 16 read-only tools, local, 0 deps.",
   "websiteUrl": "https://www.healthexport.dev/mcp/",
   "repository": {
     "url": "https://github.com/PhilipAD/health-export-mcp",
