@@ -1,11 +1,11 @@
 {
   "identifier": "philipad-health-export-mcp",
   "name": "health-export-mcp",
-  "version": "1.7.1",
+  "version": "1.7.2",
   "author": "Philip D'Souza",
   "authorUrl": "https://github.com/PhilipAD",
   "category": "health-wellness",
-  "description": "Query 190 Apple Health metrics from any MCP agent: zero-dependency, read-only, local-first.",
+  "description": "Query 194 Apple Health metrics from any MCP agent: zero-dependency, read-only, local-first.",
   "tags": [
     "apple-health",
     "healthkit",
