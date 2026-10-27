@@ -32,11 +32,11 @@
     <text x="82" y="276" fill="#A9B0E0" font-size="34" font-weight="500">Apple Health <tspan fill="#7C5CFF" font-weight="700">&#8594;</tspan> your AI agent, over MCP</text>
 
     <!-- description -->
-    <text x="82" y="330" fill="#7C7FA6" font-size="23">190 Apple Health metrics as clean JSON. Read-only, local-first.</text>
+    <text x="82" y="330" fill="#7C7FA6" font-size="23">194 Apple Health metrics as clean JSON. Read-only, local-first.</text>
 
     <!-- chips -->
     <g font-size="20" font-weight="700">
-      <g transform="translate(80,372)"><rect width="172" height="48" rx="12" fill="#161D3F" stroke="#2A3160" stroke-width="1.5"/><text x="86" y="31" text-anchor="middle" fill="#EDEFFA">190 metrics</text></g>
+      <g transform="translate(80,372)"><rect width="172" height="48" rx="12" fill="#161D3F" stroke="#2A3160" stroke-width="1.5"/><text x="86" y="31" text-anchor="middle" fill="#EDEFFA">194 metrics</text></g>
       <g transform="translate(268,372)"><rect width="174" height="48" rx="12" fill="#161D3F" stroke="#2A3160" stroke-width="1.5"/><text x="87" y="31" text-anchor="middle" fill="#EDEFFA">16 MCP tools</text></g>
       <g transform="translate(458,372)"><rect width="224" height="48" rx="12" fill="#161D3F" stroke="#2A3160" stroke-width="1.5"/><text x="112" y="31" text-anchor="middle" fill="#EDEFFA">zero-dependency</text></g>
       <g transform="translate(698,372)"><rect width="156" height="48" rx="12" fill="#161D3F" stroke="#2A3160" stroke-width="1.5"/><text x="78" y="31" text-anchor="middle" fill="#EDEFFA">read-only</text></g>

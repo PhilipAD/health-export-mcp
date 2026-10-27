@@ -2,31 +2,71 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.PhilipAD/health-export-mcp",
   "title": "MetricBridge Apple Health",
-  "description": "Query 194 Apple Health metrics from any MCP agent: zero-dependency, read-only, local-first.",
+  "description": "Apple Health for any MCP agent: 194 metrics, 16 read-only tools, local stdio, zero dependencies.",
   "websiteUrl": "https://www.healthexport.dev/mcp/",
   "repository": {
     "url": "https://github.com/PhilipAD/health-export-mcp",
     "source": "github"
   },
-  "version": "1.7.2",
+  "version": "1.7.3",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "health-export-mcp",
-      "version": "1.7.2",
+      "version": "1.7.3",
       "transport": {
         "type": "stdio"
-      }
+      },
+      "environmentVariables": [
+        {
+          "name": "HEALTH_DATA_DIR",
+          "description": "Folder holding .health-cache.json from the MetricBridge iOS app. Unset on a Mac, the server reads ~/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents if it exists.",
+          "isRequired": false,
+          "format": "filepath"
+        },
+        {
+          "name": "PAIRING_SECRET",
+          "description": "Only if Agent pairing is on in the iOS app (Settings > Agent pairing).",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "HEALTH_EXPORT_PASSPHRASE",
+          "description": "Only if Export encryption is on in the iOS app.",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
     },
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/PhilipAD/health-export-mcp/releases/download/v1.7.2/health-export.mcpb",
-      "version": "1.7.2",
-      "fileSha256": "e797895f7d99e5158a4e69480057bd801c047060ddcb782b5e7a580c8e4b58bb",
+      "identifier": "https://github.com/PhilipAD/health-export-mcp/releases/download/v1.7.3/health-export.mcpb",
+      "version": "1.7.3",
+      "fileSha256": "efa648d1d54e9f7940f805aa06a8bad262964f8c07d40789b0d7a53f1288ba61",
       "transport": {
         "type": "stdio"
-      }
+      },
+      "environmentVariables": [
+        {
+          "name": "HEALTH_DATA_DIR",
+          "description": "Folder holding .health-cache.json from the MetricBridge iOS app. Unset on a Mac, the server reads ~/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents if it exists.",
+          "isRequired": false,
+          "format": "filepath"
+        },
+        {
+          "name": "PAIRING_SECRET",
+          "description": "Only if Agent pairing is on in the iOS app (Settings > Agent pairing).",
+          "isRequired": false,
+          "isSecret": true
+        },
+        {
+          "name": "HEALTH_EXPORT_PASSPHRASE",
+          "description": "Only if Export encryption is on in the iOS app.",
+          "isRequired": false,
+          "isSecret": true
+        }
+      ]
     }
   ]
 }

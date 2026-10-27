@@ -3,7 +3,8 @@
 // The MetricBridge iOS app writes the cache directly into its iCloud Drive
 // container; this server reads it locally. No receiver, no Docker, no HTTP bridge.
 //
-//   HEALTH_DATA_DIR=/path  → read <dir>/.health-cache.json (+ .health-workouts-cache.json)
+//   HEALTH_DATA_DIR=/path  → read <dir>/.health-cache.json (+ .health-workouts-cache.json); unset on a Mac:
+//   the MetricBridge iCloud Drive folder if present, else the current directory
 //   (default on macOS: ~/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents)
 //
 // Cache shape (written by the iOS app's ICloudExporter / HealthCache):
@@ -33,11 +34,29 @@ import { isEnvelope, openEnvelope, configuredPassphrase, EnvelopeError } from '.
 // accept "steps", "StepCount" or "HKQuantityTypeIdentifierStepCount" for step_count.
 import * as norm from './normalize.mjs';
 
-// Expand a leading ~ (Node, unlike the shell, does not) so manual configs resolve correctly.
-const RAW_DIR = process.env.HEALTH_DATA_DIR || '.';
-const DATA_DIR = (RAW_DIR === '~' || RAW_DIR.startsWith('~/'))
-  ? path.join(os.homedir(), RAW_DIR.slice(1))
-  : RAW_DIR;
+// The folder the MetricBridge iOS app exports to, as iCloud Drive mirrors it on a Mac signed in to
+// the same Apple Account.
+export const ICLOUD_DIR = path.join(os.homedir(), 'Library', 'Mobile Documents', 'iCloud~ai~healthexport~app', 'Documents');
+
+/** Which folder to read, and why (shown by --doctor and get_mcp_status).
+ *
+ *  HEALTH_DATA_DIR wins when set; a leading ~ is expanded (Node, unlike the shell, does not), so JSON
+ *  configs can keep it. Unset, a Mac with the MetricBridge iCloud folder reads that folder: every
+ *  config a registry or directory generates is `npx -y health-export-mcp` with no env block, and
+ *  before 1.7.3 that read the client's working directory and reported "no data" to someone whose
+ *  export was sitting in iCloud Drive. Anywhere else the default stays the current directory. */
+export function resolveDataDir(env = process.env, platform = process.platform, exists = fs.existsSync) {
+  const raw = env.HEALTH_DATA_DIR;
+  if (raw) {
+    const dir = (raw === '~' || raw.startsWith('~/')) ? path.join(os.homedir(), raw.slice(1)) : raw;
+    return { dir, how: 'HEALTH_DATA_DIR' };
+  }
+  if (platform === 'darwin' && exists(ICLOUD_DIR)) return { dir: ICLOUD_DIR, how: 'default: the MetricBridge iCloud Drive folder' };
+  return { dir: '.', how: 'default: current directory (HEALTH_DATA_DIR not set)' };
+}
+const RESOLVED = resolveDataDir();
+const DATA_DIR = RESOLVED.dir;
+export const dataDirReason = RESOLVED.how;
 
 /** Resolve a data file inside the configured dir. Exported so events.mjs and the CLI (doctor,
  *  status) resolve against the SAME directory this module captured at import time; re-deriving it
@@ -377,7 +396,8 @@ export async function loadWorkouts() {
 
 export function sourceLabel() {
   if (DEMO) return 'SYNTHETIC DEMO DATASET (--demo): no file is read, every value is generated';
-  return `file ${path.resolve(DATA_DIR, '.health-cache.json')}`;
+  // Say how the folder was chosen when it wasn't configured, so a "no data" answer names the cause.
+  return `file ${path.resolve(DATA_DIR, '.health-cache.json')}` + (RESOLVED.how === 'HEALTH_DATA_DIR' ? '' : ` (${RESOLVED.how})`);
 }
 
 // ---- helpers ----

@@ -21,7 +21,7 @@ import * as ev from './events.mjs';
 import { PROMPTS } from './prompts.mjs';
 import { DEMO } from './demo.mjs';
 
-const SERVER = { name: 'health-export-ai', version: '1.7.2' };
+const SERVER = { name: 'health-export-ai', version: '1.7.3' };
 const DEFAULT_PROTOCOL = '2025-06-18';
 const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
 
@@ -404,7 +404,8 @@ Usage:
   node server.mjs --help              this text
 
 Environment:
-  HEALTH_DATA_DIR            folder holding .health-cache.json (default: current directory)
+  HEALTH_DATA_DIR            folder holding .health-cache.json (default: the MetricBridge iCloud
+                             Drive folder on a Mac if it exists, else the current directory)
   PAIRING_SECRET             pairing code from the iOS app, when Agent pairing is on
   HEALTH_DEMO=1              same as --demo
   HEALTH_LISTEN=1            also accept LAN pushes inside the MCP process (see receiver.mjs)
@@ -419,6 +420,7 @@ async function doctor() {
   console.log(`health-export-mcp doctor (${SERVER.version})`);
   console.log(`  node:            ${process.version}`);
   console.log(`  data dir:        ${dir}${fs.existsSync(dir) ? '' : '   (DOES NOT EXIST)'}`);
+  console.log(`  chosen by:       ${store.dataDirReason}`);
   if (DEMO) console.log('  mode:            SYNTHETIC DEMO DATA (--demo / HEALTH_DEMO=1); the report below still describes the real directory');
   const p = store.pairing();
   console.log(`  pairing:         ${!p.required ? 'not required (no .health-pair.json, no PAIRING_SECRET)' : p.ok ? 'required, unlocked' : 'required, LOCKED: ' + (p.reason || 'check PAIRING_SECRET')}`);
