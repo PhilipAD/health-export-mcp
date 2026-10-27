@@ -107,14 +107,19 @@ async function main() {
   const tl = await c.req('tools/list');
   const tools = tl.result?.tools || [];
   const names = tools.map((t) => t.name);
-  ok(names.length === 16, `tools/list → ${names.length} tools (expected 16)`);
+  ok(names.length === 18, `tools/list → ${names.length} tools (expected 18)`);
+  const WRITERS = ['add_event', 'remove_event'];
   for (const t of ['get_mcp_status', 'list_metrics', 'get_health_metrics', 'get_trends', 'compare_periods',
     'get_structured_export', 'get_intraday', 'query_health_data',
     'list_events', 'get_profile', 'get_workouts', 'get_sleep_sessions', 'get_cycle_context', 'correlate_metrics',
-    'get_freshness', 'resolve_metric'])
+    'get_freshness', 'resolve_metric', ...WRITERS])
     ok(names.includes(t), `tool present: ${t}`);
-  ok(tools.every((t) => t.annotations?.readOnlyHint === true && t.annotations?.idempotentHint === true && t.annotations?.openWorldHint === false),
-    'every tool carries readOnly/idempotent/closed-world annotations');
+  ok(tools.filter((t) => !WRITERS.includes(t.name)).every((t) => t.annotations?.readOnlyHint === true && t.annotations?.idempotentHint === true && t.annotations?.openWorldHint === false),
+    'every read tool carries readOnly/idempotent/closed-world annotations');
+  ok(tools.filter((t) => WRITERS.includes(t.name)).every((t) => t.annotations?.readOnlyHint === false && t.annotations?.idempotentHint === true && t.annotations?.openWorldHint === false),
+    'add_event and remove_event are declared as idempotent, closed-world writers');
+  ok(tools.find((t) => t.name === 'add_event')?.annotations?.destructiveHint === false
+    && tools.find((t) => t.name === 'remove_event')?.annotations?.destructiveHint === true, 'only remove_event is destructive');
 
   const pl = await c.req('prompts/list');
   const prompts = pl.result?.prompts || [];
@@ -180,11 +185,19 @@ async function main() {
   ok(['fresh', 'stale'].includes(fr.data?.state) && typeof fr.data?.stale === 'boolean' && fr.data?.last_data_date,
     `get_freshness → ${fr.data?.state}, last data ${fr.data?.last_data_date}`);
 
+  const ae = await track('add_event', { date: isoDay(2), type: 'habit', title: 'Stopped late coffee', clientEventId: 'it-1' });
+  ok(ae.data?.added === true && /^agent-/.test(ae.data.event?.id || '') && ae.data.event.source === 'agent', `add_event → ${ae.data?.event?.id}`);
+  const le2 = await c.call('list_events', {});
+  ok(le2.data?.count === 3 && le2.data.events.filter((e) => e.source === 'agent').length === 1, 'list_events merges the agent event (3 events, 1 agent)');
+
+  const re = await track('remove_event', { id: ae.data?.event?.id });
+  ok(re.data?.removed === true, 'remove_event removes the agent event');
+
   const rm = await track('resolve_metric', { name: 'steps' });
   ok(rm.data?.resolved === true && rm.data.metric === 'step_count' && rm.data.inExport === true,
     `resolve_metric(steps) → ${rm.data?.metric} (in export: ${rm.data?.inExport})`);
 
-  ok(calls.length === 16, `exercised ${calls.length} tools (one call each)`);
+  ok(calls.length === 18, `exercised ${calls.length} tools (one call each)`);
   const oversized = calls.filter(([, r]) => (r.text.length * 2) > BUDGET);
   ok(oversized.length === 0, `every answer within the ${BUDGET}-char wire budget${oversized.length ? ` (over: ${oversized.map(([n]) => n).join(', ')})` : ''}`);
 

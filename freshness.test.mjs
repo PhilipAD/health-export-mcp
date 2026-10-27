@@ -3,8 +3,9 @@
 // An agent pointed at an exported file had no machine-readable way to tell whether what it read
 // was this morning's data or three weeks old. These tests pin the contract of the `freshness`
 // block on get_mcp_status and the `get_freshness` tool:
-//   - `stale` is decided by the age of the newest write across the export file family, against a
-//     documented threshold (default 26 h, HEALTH_STALE_AFTER_HOURS, or the caller's maxAgeHours);
+//   - `stale` is decided by the age of the newest write of the CORE files (daily cache, sleep
+//     sessions; since 1.8.0) against a documented threshold (default 26 h,
+//     HEALTH_STALE_AFTER_HOURS, or the caller's maxAgeHours); test/export-integrity.test.mjs pins the rest;
 //   - `as_of` is the app's own `_meta.writtenAt` when present, else the cache file time;
 //   - per-file write times expose "cache fresh, events stale";
 //   - the tool and the `status --max-age N` cron gate agree for the same N;
@@ -136,7 +137,7 @@ test('old export: stale true once the newest write passes the threshold, with a 
   assert.equal(edge.stale, true);
 });
 
-test('per-file ages expose "cache fresh, events stale"; stale follows the NEWEST write', async () => {
+test('per-file ages expose "cache fresh, events stale"; stale follows the newest CORE write', async () => {
   clear(DIR);
   const now = Date.now();
   put(DIR, '.health-cache.json', cache(), 1, now);
@@ -376,23 +377,27 @@ test('end to end over stdio: tools/list advertises get_freshness and a stale exp
     const tl = await s.req('tools/list');
     const tool = tl.result.tools.find((t) => t.name === 'get_freshness');
     assert.ok(tool, 'get_freshness is listed');
-    assert.equal(tl.result.tools.length, 16);
+    assert.equal(tl.result.tools.length, 18);
     assert.deepEqual(tool.annotations, { readOnlyHint: true, idempotentHint: true, openWorldHint: false });
     assert.equal(tool.inputSchema.properties.maxAgeHours.type, 'number');
     assert.equal(tool.inputSchema.properties.maxAgeHours.exclusiveMinimum, 0);
     assert.equal(tool.inputSchema.properties.maxAgeHours.maximum, 8760);
 
-    // Newest write (events, 1 h) is inside the env threshold; the cache itself is flagged per file.
+    // A fresh events file (1 h) no longer vouches for a 72-hour-old cache (1.8.0): stale is judged
+    // on the core files, and the events file is still reported per file.
     const f = await s.call('get_freshness');
     assert.equal(f.isError, false);
     assert.equal(JSON.stringify(f.data), f.text, 'text and structured copies match');
     assert.equal(f.data.stale_after_hours, 48);
-    assert.equal(f.data.stale, false);
+    assert.equal(f.data.stale, true);
+    assert.equal(f.data.stale_basis, 'core_files');
+    assert.equal(f.data.newest_write.file, '.health-cache.json');
     assert.deepEqual(f.data.stale_files, ['.health-cache.json']);
     assert.equal(f.data.files['.health-cache.json'].age_hours, 72);
+    assert.equal(f.data.files['health-events.json'].age_hours, 1);
     assert.equal(f.data.as_of, WRITTEN_AT);
 
-    // Drop the fresh file: now the whole export is stale.
+    // Dropping the events file changes nothing: the verdict never rested on it.
     fs.rmSync(path.join(dir, 'health-events.json'));
     const g = await s.call('get_freshness');
     assert.equal(g.data.state, 'stale');

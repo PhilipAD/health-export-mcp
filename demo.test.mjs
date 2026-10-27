@@ -41,7 +41,8 @@ function client(args, env) {
   return { req, call, kill: () => proc.kill() };
 }
 
-// Arguments that make each of the 16 tools return a real (non-error) answer against the demo set.
+// Arguments that make each of the 16 read tools return a real (non-error) answer against the demo set.
+// The two write tools (add_event, remove_event) are refused in demo mode; tested below.
 const CALLS = [
   ['get_mcp_status', {}],
   ['list_metrics', {}],
@@ -70,6 +71,20 @@ test('demo mode: every tool answers with demo:true and the [SYNTHETIC DEMO DATA]
       assert.equal(r.data?.demo, true, `${name}: structuredContent must carry demo:true`);
       assert.ok(r.text.startsWith('[SYNTHETIC DEMO DATA] '), `${name}: text copy must carry the watermark`);
     }
+  } finally { c.kill(); }
+});
+
+test('demo mode refuses both write tools, watermarked, and writes nothing', async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-demo-write-'));
+  const c = client(['--demo'], { HEALTH_DATA_DIR: dir });
+  try {
+    await c.req('initialize', { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 't', version: '1' } });
+    for (const [name, args] of [['add_event', { date: '2026-08-10', type: 'habit', title: 'x' }], ['remove_event', { id: 'agent-x' }]]) {
+      const r = await c.call(name, args);
+      assert.equal(r.isError, true, `${name} is refused in demo mode`);
+      assert.match(r.text, /^\[SYNTHETIC DEMO DATA\] Error: .*disabled in demo mode/);
+    }
+    assert.deepEqual(fs.readdirSync(dir), [], 'nothing was written');
   } finally { c.kill(); }
 });
 

@@ -158,14 +158,16 @@ test('get_trends and compare_periods say which window holds rebuilt days', async
   assert.equal(c.recompute.periodB, undefined, 'the untouched period carries nothing');
 });
 
-test('a legacy cache (no _meta, no r) answers exactly as before, with recompute unsupported', async () => {
+test('a legacy cache (no _meta, no r) answers exactly as before; recompute support is unknown, not "unsupported"', async () => {
   write(legacyCache());
   const r = await store.getHealthMetrics({ metric: 'step_count', start: day(35), end: day(45), granularity: 'day' });
   assert.equal(r.step_count.recompute, undefined);
   assert.ok(r.step_count.points.every((p) => Object.keys(p).join() === 'date,value'));
   assert.equal(r.step_count.aggregate, 1000 * 9 + 1250 + 1100);
   const s = await store.status();
-  assert.equal(s.recompute.supported, false);
+  // No _meta means the file cannot say either way (contract 10.7): null with the reason, not false.
+  assert.equal(s.recompute.supported, null);
+  assert.match(s.recompute.reason, /no _meta block/);
   assert.equal(s.recompute.backfilled_days, 0);
   assert.equal(s.recompute.capped, undefined);
   const t = await store.getTrends({ metric: 'step_count', window: 7 });

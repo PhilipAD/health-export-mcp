@@ -21,7 +21,7 @@ import * as ev from './events.mjs';
 import { PROMPTS } from './prompts.mjs';
 import { DEMO } from './demo.mjs';
 
-const SERVER = { name: 'health-export-ai', version: '1.7.3' };
+const SERVER = { name: 'health-export-ai', version: '1.8.0' };
 const DEFAULT_PROTOCOL = '2025-06-18';
 const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
 
@@ -50,20 +50,24 @@ const EXCLUDE_TRAVEL = {
 // Data-heavy tools declare a larger persist-to-disk threshold so a legitimately big answer is
 // written to a file and referenced, instead of being cut off mid-JSON.
 const BIG_RESULT_META = { 'anthropic/maxResultSizeChars': 400000 };
-// Every tool here is a pure read over local files: nothing is written, repeated calls with the
+// Every read tool is a pure read over local files: nothing is written, repeated calls with the
 // same arguments return the same answer (until the iOS app rewrites a file), and no tool reaches
-// beyond the configured data dir. Declared once and attached to all of them in tools/list.
+// beyond the configured data dir. Declared once and attached to every tool that does not declare
+// its own. The two exceptions are add_event and remove_event (1.8.0), which write one file,
+// health-events-agent.json, and nothing else: never Apple Health, never a file the app writes.
 const ANNOTATIONS = { readOnlyHint: true, idempotentHint: true, openWorldHint: false };
+const WRITE_ANNOTATIONS = { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false };
+const REMOVE_ANNOTATIONS = { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false };
 const TOOLS = [
   {
     name: 'get_mcp_status',
-    description: 'Health check: data source, how many metrics/workouts are available, which optional context files exist, the most recent data date, and a `recompute` summary of past days rebuilt after late-arriving samples (with any days too old to rebuild). Call this first to confirm the bridge is connected. The result also includes `app.unlockUrl` and `app.appStoreUrl`, the website and App Store page of the companion iOS app that writes the export; both links carry fixed campaign attribution labels.',
+    description: 'Health check: data source, how many metrics/workouts are available, which optional context files exist, the most recent data date, a compact `freshness` block (its `state` is stale_copy, with a `stale_copy` list, when this machine holds an older copy of the export than the phone last wrote), and a `recompute` summary of past days rebuilt after late-arriving samples (with any days too old to rebuild; `supported: null` when the cache cannot tell). Call this first to confirm the bridge is connected. The result also includes `app.unlockUrl` and `app.appStoreUrl`, the website and App Store page of the companion iOS app that writes the export; both links carry fixed campaign attribution labels.',
     inputSchema: { type: 'object', properties: {} },
     handler: () => store.status(),
   },
   {
     name: 'get_freshness',
-    description: `How current the exported files are, so you can decide whether to trust what you read or ask the user to refresh. Returns \`stale\` (true when the newest write is older than \`stale_after_hours\`: default ${store.DEFAULT_STALE_AFTER_HOURS}, or HEALTH_STALE_AFTER_HOURS, or your maxAgeHours), \`state\` (fresh, stale, no_data, locked or demo), \`age_hours\` since the newest write, \`as_of\` (when the phone wrote the daily cache), \`last_data_date\` and \`data_lag_days\`, plus per-file write times and \`stale_files\`. Same rule as the \`status --max-age\` cron gate. When no export is found, \`recommendation\` also names the companion iOS app's App Store page and website (the same links as \`app.appStoreUrl\` and \`app.unlockUrl\`); when the newest readable export is older than the server's own window (not a stricter maxAgeHours), it names the website. Both carry fixed campaign labels. Cheap: call it again before a long analysis.`,
+    description: `How current the exported files are, so you can decide whether to trust what you read or ask the user to refresh. \`stale\` is judged on the core files (the daily cache and health-sessions.json), never on the hourly intraday file: true when their newest write is older than \`stale_after_hours\` (default ${store.DEFAULT_STALE_AFTER_HOURS}, or HEALTH_STALE_AFTER_HOURS, or your maxAgeHours), or when this machine holds a stale copy. \`state\` is fresh, stale, stale_copy, no_data, locked or demo. stale_copy means the phone's manifest (.health-manifest.json) or iCloud says the phone wrote a newer version of a core file than the one on this machine (\`stale_copy\` lists each file with localWrittenAt, phoneWrittenAt and reason); relay the recommendation, which says how to make iCloud Drive download it. Also returns \`age_hours\`, \`as_of\` (when the phone wrote the daily cache), \`last_data_date\`, \`data_lag_days\`, per-file write times with each file's match against the manifest, \`stale_files\`, \`manifest_behind\` (the manifest lags the data, not stale), \`sessions_last_night\` (present or absent; without a manifest, advisory only, people skip nights) and, on a Mac, an advisory \`icloud\` status per core file. Same rule as the \`status --max-age\` cron gate. When no export is found, \`recommendation\` also names the companion iOS app's App Store page and website (the same links as \`app.appStoreUrl\` and \`app.unlockUrl\`); when the newest readable export is older than the server's own window (not a stricter maxAgeHours), it names the website. Both carry fixed campaign labels. Cheap: call it again before a long analysis.`,
     inputSchema: {
       type: 'object',
       properties: {
@@ -82,7 +86,7 @@ const TOOLS = [
   },
   {
     name: 'get_health_metrics',
-    description: "Get values for a metric (or all metrics) over an optional date range, with an aggregate (avg/sum/min/max/latest). The core data-retrieval tool. Every result carries a `coverage` block giving the metric's real firstDate/lastDate/days: check it before trusting a long window, and note that `aggregate` is always computed over the full range even when `points` are rolled up. Single-metric answers also list any logged point events inside the window as segmentBoundaries. A day the app rebuilt after samples arrived late (or were deleted) carries `recomputed_at`, and a metric with rebuilt or possibly stale past days carries a `recompute` block (backfilled_days, recomputed_at, capped); untouched days carry neither.",
+    description: "Get values for a metric (or all metrics) over an optional date range, with an aggregate (avg/sum/min/max/latest). The core data-retrieval tool. Every result carries a `coverage` block giving the metric's real firstDate/lastDate/days: check it before trusting a long window, and note that `aggregate` is always computed over the full range even when `points` are rolled up. Single-metric answers also list any logged point events inside the window as segmentBoundaries. For blood_pressure_systolic or blood_pressure_diastolic at day granularity, the individual readings behind the daily mean are attached as `readings` [{t, systolic, diastolic, source, manual}] when the app exported them (health-readings.json), the most recent 150 in range, with `readingsOmitted` counting the rest. A day the app rebuilt after samples arrived late (or were deleted) carries `recomputed_at`, and a metric with rebuilt or possibly stale past days carries a `recompute` block (backfilled_days, recomputed_at, capped); untouched days carry neither.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -92,7 +96,7 @@ const TOOLS = [
         granularity: GRANULARITY, limit: LIMIT,
         filterDays: {
           type: 'object',
-          description: 'Restrict to days covered by matching logged events (health-events.json): endDate ranges cover every day inclusive, point events cover their single day, negate:true keeps only days NOT covered. The answer states how many days matched. Example: HRV on night-shift blocks vs days off.',
+          description: 'Restrict to days covered by matching logged events (health-events.json and health-events-agent.json): endDate ranges cover every day inclusive, point events cover their single day, negate:true keeps only days NOT covered. The answer states how many days matched. Example: HRV on night-shift blocks vs days off.',
           properties: {
             eventType: { type: 'string', description: 'Event type to match, e.g. shift, medication, travel.' },
             eventTag: { type: 'string', description: 'Event tag to match, e.g. nights.' },
@@ -129,7 +133,7 @@ const TOOLS = [
         periodB: { type: 'object', properties: { start: DATE, end: DATE } },
         anchor: {
           type: 'object',
-          description: 'Build both periods around a logged event instead of passing dates: periodA is the {days} days before the event date, periodB the {days} days after, the event day itself excluded from both. Get event ids from list_events. Pass either anchor or periodA/periodB, not both.',
+          description: 'Build both periods around a logged event instead of passing dates: periodA is the {days} days before the event date, periodB the {days} days after, the event day itself excluded from both. Get event ids from list_events (app and agent-logged events both work). Pass either anchor or periodA/periodB, not both.',
           properties: {
             eventId: { type: 'string', description: 'Event id from list_events.' },
             days: { type: 'integer', description: 'Days on each side of the event.' },
@@ -157,7 +161,7 @@ const TOOLS = [
   },
   {
     name: 'get_intraday',
-    description: "The current hour-by-hour window from the iOS app's HOURLY automations (health-intraday.json, app 1.4+): each metric's hourly points plus its latest value. The file is REPLACED on every hourly run, so this is a live within-day view, not history; use get_health_metrics for day-level questions. Returns available:false with setup guidance when no hourly automation has delivered yet.",
+    description: "The current hour-by-hour window from the iOS app's HOURLY automations (health-intraday.json, app 1.4+): each metric's hourly points (t, v = the hour's value) plus its latest value. The window covers a 48-hour span, yesterday 00:00 local to now, and the file is REPLACED on every run, so this is a live recent view, not history; use get_health_metrics for day-level questions. Discrete metrics (heart rate, SpO2, respiratory rate, HRV, resting heart rate) carry the hour's Min and Max beside v (the hour's mean) when the app version writes them; older exports cover today only and have no Min/Max. Returns available:false with setup guidance when no hourly automation has delivered yet.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -175,7 +179,7 @@ const TOOLS = [
   // ---- context tools (optional files; absence is reported, never guessed) ----
   {
     name: 'list_events',
-    description: 'Logged context events from health-events.json: medication starts, habit changes, doctor visits, life events, shift blocks, episodes, travel, and any type a newer app adds. Optional {type, tag, start, end} filters; a range event matches a window it overlaps. Sorted ascending by date. Returns available:false when the file was never exported; absence means nothing was exported, not that nothing happened.',
+    description: 'Logged context events: medication starts, habit changes, doctor visits, life events, shift blocks, episodes, travel, and any type a newer app adds. Merges the app\'s health-events.json with health-events-agent.json (events logged with add_event); every event carries source "app" or "agent". Optional {type, tag, start, end} filters; a range event matches a window it overlaps. Sorted ascending by date. Returns available:false when neither file exists; absence means nothing was logged or exported, not that nothing happened.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -185,6 +189,38 @@ const TOOLS = [
       },
     },
     handler: (a) => ev.listEvents(a),
+  },
+  {
+    name: 'add_event',
+    description: `Log a context event the user tells you about (a medication start, a habit change, a visit, a trip) so later analysis can segment around it. Writes ONLY health-events-agent.json in the export folder, never Apple Health and never a file the iOS app writes; the app shows these events read-only. Returns the stored event with its id (starting "agent-"). Idempotent: repeating a call with the same clientEventId (or, without one, the same date, type, title and endDate) returns the event already logged instead of adding a duplicate. Ask the user before logging anything they did not state. Refused in demo mode, when the folder is not writable, and on an encrypted export without HEALTH_EXPORT_PASSPHRASE (the file is sealed like the rest of the export when the passphrase is set).`,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        date: { ...DATE, description: 'Local day the event happened or started, YYYY-MM-DD.' },
+        type: { type: 'string', enum: ev.KNOWN_EVENT_TYPES, description: 'Event type: medication, habit, visit, life, shift, episode, travel or other. Range types (shift, travel, episode) usually carry an endDate.' },
+        title: { type: 'string', description: 'Short description, e.g. "Started magnesium 300 mg". At most 200 characters.' },
+        endDate: { ...DATE, description: 'Last day of a range event (inclusive), YYYY-MM-DD, not before date. Omit for a point event.' },
+        note: { type: 'string', description: 'Optional longer note, at most 2000 characters.' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Optional tags for filtering, e.g. ["magnesium"]. At most 20.' },
+        clientEventId: { type: 'string', description: 'Optional idempotency key: the same key never logs a second event.' },
+      },
+      required: ['date', 'type', 'title'],
+      additionalProperties: false,
+    },
+    annotations: WRITE_ANNOTATIONS,
+    handler: (a) => ev.addEvent(a),
+  },
+  {
+    name: 'remove_event',
+    description: 'Remove an event that was logged with add_event (id starting "agent-", source "agent" in list_events) from health-events-agent.json. Events logged in the iOS app are refused: they are edited in the app. Removing an id that is already gone changes nothing and says so. Refused in demo mode and when the folder is not writable.',
+    inputSchema: {
+      type: 'object',
+      properties: { id: { type: 'string', description: 'The agent event id from list_events or add_event.' } },
+      required: ['id'],
+      additionalProperties: false,
+    },
+    annotations: REMOVE_ANNOTATIONS,
+    handler: (a) => ev.removeEvent(a),
   },
   {
     name: 'get_profile',
@@ -209,7 +245,7 @@ const TOOLS = [
   },
   {
     name: 'get_sleep_sessions',
-    description: "Clustered sleep sessions from health-sessions.json with {start, end, day} filters. Sessions are attributed to the WAKING day, matching the daily cache's sleep_analysis, so the two surfaces never disagree; a split night appears as multiple sessions with the same day, returned as-is. Timestamps carry the local UTC offset at the time of the sample.",
+    description: "Clustered sleep sessions from health-sessions.json with {start, end, day} filters. Sessions are attributed to the WAKING day, matching the daily cache's sleep_analysis, so the two surfaces never disagree; a split night appears as separate sessions with the same day. Duplicate copies of one night left by older app versions (sharing an end time with, or lying inside, a longer session on the same day) are collapsed to the longer one and counted in `collapsedDuplicates`. A session with manualInBed:true was built from an In Bed entry typed into the Health app with no asleep sample. Timestamps carry the local UTC offset at the time of the sample.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -274,7 +310,7 @@ async function handle(msg) {
         protocolVersion: params?.protocolVersion || DEFAULT_PROTOCOL,
         capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } },
         serverInfo: SERVER,
-        instructions: 'Apple Health export bridge. Call get_mcp_status (its `freshness` block says whether the export is stale; get_freshness has the detail), then list_metrics, then the data tools (get_health_metrics, get_trends, compare_periods, get_structured_export, get_workouts, correlate_metrics). The context tools (list_events, get_profile, get_sleep_sessions, get_cycle_context) read optional files: absence is reported explicitly, never read as "no data". prompts/list serves ready-made analysis prompts.',
+        instructions: 'Apple Health export bridge. Call get_mcp_status (its `freshness` block says whether the export is stale; get_freshness has the detail), then list_metrics, then the data tools (get_health_metrics, get_trends, compare_periods, get_structured_export, get_workouts, correlate_metrics). The context tools (list_events, get_profile, get_sleep_sessions, get_cycle_context) read optional files: absence is reported explicitly, never read as "no data". add_event and remove_event are the only tools that write, and only health-events-agent.json: log an event only when the user stated it. prompts/list serves ready-made analysis prompts.',
       });
 
     case 'notifications/initialized':
@@ -286,9 +322,9 @@ async function handle(msg) {
 
     case 'tools/list':
       return result(id, {
-        tools: TOOLS.map(({ name, description, inputSchema, _meta }) => ({
+        tools: TOOLS.map(({ name, description, inputSchema, _meta, annotations }) => ({
           name, description, inputSchema,
-          annotations: ANNOTATIONS,
+          annotations: annotations ?? ANNOTATIONS,
           ...(_meta && { _meta }),
         })),
       });
@@ -399,7 +435,9 @@ Usage:
   node server.mjs                     run the MCP server on stdio (the default)
   node server.mjs --demo              serve a deterministic SYNTHETIC dataset; every answer is watermarked
   node server.mjs --doctor            print a diagnostics report and exit 0
-  node server.mjs status --max-age N  exit 0 if the newest data write is within N hours, else 1 (cron gate)
+  node server.mjs status --max-age N  exit 0 if the newest write of the core files (daily cache, sleep
+                                      sessions) is within N hours and no stale iCloud copy is detected,
+                                      else 1 (cron gate)
   node server.mjs receive             run the LAN receiver standalone (no MCP; binds 127.0.0.1 by default)
   node server.mjs --help              this text
 
@@ -456,7 +494,16 @@ async function doctor() {
   } catch (e) {
     console.log(`  metrics:         ERROR: ${e.message}`);
   }
-  console.log(`  freshness:       ${newest ? `${((Date.now() - newest.mtimeMs) / 3600000).toFixed(1)} hours since the newest write (${newest.name})` : 'no data files present'}`);
+  const core = store.newestWrite();
+  console.log(`  freshness:       ${core ? `${((Date.now() - core.mtimeMs) / 3600000).toFixed(1)} hours since the newest ${core.basis === 'core_files' ? 'core ' : ''}write (${core.file})` : 'no data files present'}`);
+  if (newest && core && newest.name !== core.file) console.log(`                   (newest of any file: ${newest.name}, ${((Date.now() - newest.mtimeMs) / 3600000).toFixed(1)} hours)`);
+  if (p.ok) {
+    const integ = store.exportIntegrity();
+    const m = integ.manifest;
+    console.log(`  phone manifest:  ${!m.present ? 'absent (app predates it, or no export yet)' : m.readable === false ? `present but unreadable (${m.error})` : `generation ${m.generation ?? '?'}, written ${m.writtenAt ?? '?'}`}`);
+    for (const c of integ.staleCopy) console.log(`  STALE COPY:      ${c.file} (${c.reason}): this Mac ${c.localWrittenAt ?? '?'}, phone ${c.phoneWrittenAt ?? '?'}`);
+    if (integ.icloud) for (const [f, v] of Object.entries(integ.icloud)) console.log(`  icloud:          ${f.padEnd(24)} ${v.status ?? 'unknown'}${v.dataless ? ', not downloaded (dataless)' : ''}`);
+  }
 }
 
 // Freshness gate for cron: let a scheduled agent skip its run (and its tokens) when the phone has
@@ -468,11 +515,18 @@ function statusCommand(argv) {
     console.log('usage: node server.mjs status --max-age <hours>');
     process.exit(2);
   }
-  // store.newestWrite() is the same helper get_freshness decides `stale` with, so the exit code
-  // and the tool answer cannot drift apart.
+  // store.newestWrite() (the core files) and store.exportIntegrity() (the stale-copy check) are the
+  // same helpers get_freshness decides `stale` with, so the exit code and the tool answer cannot
+  // drift apart. The content half of the integrity check (last night's session) reads a data file,
+  // so it runs only past the pairing gate, like the tool.
   const newest = store.newestWrite();
   if (!newest) {
     console.log(`stale: no data files found in ${store.dataPath('')}`);
+    process.exit(1);
+  }
+  const copies = store.exportIntegrity({ readContent: store.pairing().ok }).staleCopy.filter((c) => c.core);
+  if (copies.length) {
+    console.log(`stale: this machine holds an older copy of ${copies.map((c) => c.file).join(', ')} than the phone last wrote (${copies.map((c) => c.reason).join(', ')}); iCloud Drive has not downloaded the latest version`);
     process.exit(1);
   }
   const age = (Date.now() - newest.mtimeMs) / 3600000;
@@ -547,4 +601,4 @@ if (IS_MAIN) {
   }
 }
 
-export { TOOLS, SERVER, ANNOTATIONS, handle };
+export { TOOLS, SERVER, ANNOTATIONS, WRITE_ANNOTATIONS, REMOVE_ANNOTATIONS, handle };
