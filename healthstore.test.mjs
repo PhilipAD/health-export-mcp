@@ -333,3 +333,15 @@ test('status carries the link in demo mode, where no real export is read', () =>
   assert.equal(s.demo, true);
   assertTagged(s.app);
 });
+
+// 1.7.3: an unconfigured server on a Mac reads the MetricBridge iCloud folder, not the client's cwd.
+test('resolveDataDir: HEALTH_DATA_DIR wins, ~ expands, the Mac default is the iCloud folder', async () => {
+  const { resolveDataDir, ICLOUD_DIR } = await import('./healthstore.mjs');
+  assert.deepEqual(resolveDataDir({ HEALTH_DATA_DIR: '/x' }, 'darwin', () => true), { dir: '/x', how: 'HEALTH_DATA_DIR' });
+  assert.equal(resolveDataDir({ HEALTH_DATA_DIR: '~/h' }, 'linux', () => false).dir, path.join(os.homedir(), 'h'));
+  assert.equal(resolveDataDir({}, 'darwin', (p) => p === ICLOUD_DIR).dir, ICLOUD_DIR);
+  assert.match(resolveDataDir({}, 'darwin', (p) => p === ICLOUD_DIR).how, /iCloud/);
+  assert.equal(resolveDataDir({}, 'darwin', () => false).dir, '.', 'no iCloud folder: current directory');
+  assert.equal(resolveDataDir({}, 'linux', () => true).dir, '.', 'not a Mac: current directory');
+  assert.ok(ICLOUD_DIR.endsWith('Library/Mobile Documents/iCloud~ai~healthexport~app/Documents'));
+});

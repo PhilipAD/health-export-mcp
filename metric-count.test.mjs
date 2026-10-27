@@ -10,7 +10,9 @@ import { fileURLToPath } from 'node:url';
 import { METRIC_CATALOG } from './metric-catalog.mjs';
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const SURFACES = ['README.md', 'llms.txt', 'package.json', 'server.json', 'manifest.json', 'lhm.plugin.json', 'AGENTS.md'];
+// glama.json and the SVGs joined in 1.7.3: Glama, the GitHub social card and the README diagram still said 190.
+const SURFACES = ['README.md', 'llms.txt', 'package.json', 'server.json', 'manifest.json', 'lhm.plugin.json', 'AGENTS.md',
+  'glama.json', 'assets/architecture.svg', 'assets/social-preview.svg'];
 // "190 metrics", "**190 metrics**", "190 Apple Health metrics", "(190 metrics)". Not "190-metric" (an adjective
 // in prose) and not "~15 metrics" (an approximate count, e.g. the synthetic demo dataset).
 const CLAIM = /(?<![~\d])\b(\d{2,3})\*{0,2}(?:\s|&nbsp;)+(?:Apple Health |HealthKit |Apple Health and Apple Watch )?metrics\b/gi;

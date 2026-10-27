@@ -4,7 +4,7 @@
     "PhilipAD"
   ],
   "name": "health-export-mcp",
-  "description": "Query 190 Apple Health/HealthKit metrics from any MCP AI agent: zero-dependency, local-first, read-only. The open-source server for the MetricBridge app.",
+  "description": "Query 194 Apple Health/HealthKit metrics from any MCP agent: 16 read-only tools, 22 prompts, zero dependencies, local stdio. The open-source server for the MetricBridge iOS app.",
   "longDescription": "An open-source, zero-dependency MCP server that turns your Apple Health export into 16 query tools any AI agent can call in natural language. Tracks HRV, sleep, resting heart rate, steps, workouts, VO₂ max, and 180+ more metrics, all local-first with no developer server in the path.",
   "categories": [
     "healthcare",
@@ -26,7 +26,7 @@
   },
   "homepage": "https://www.healthexport.dev",
   "license": "MIT",
-  "installCommand": "git clone https://github.com/PhilipAD/health-export-mcp.git && cd health-export-mcp && node apply-mcp-config.mjs",
+  "installCommand": "npx -y health-export-mcp --demo",
   "runtime": {
     "type": "stdio",
     "command": "node",

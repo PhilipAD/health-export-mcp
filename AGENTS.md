@@ -2,7 +2,7 @@
 
 Copy-paste setup for every supported agent. The server is a single Node script (`server.mjs`,
 zero dependencies). Point `HEALTH_DATA_DIR` at the folder that holds your exported
-`.health-cache.json`, by default the [MetricBridge](https://www.healthexport.dev) iOS app
+`.health-cache.json` (on a Mac, since 1.7.3, the server finds the app's iCloud folder by itself when it's unset), by default the [MetricBridge](https://www.healthexport.dev) iOS app
 ([App Store](https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8&ppid=2c28f88a-d94f-48f9-8e6a-74a8d89ce66e)) writes it to your iCloud Drive container:
 
 ```
@@ -29,21 +29,22 @@ Keep the double quotes (the folder name contains a space). Add `--scope user` to
 
 ## Claude Desktop
 
-`~/Library/Application Support/Claude/claude_desktop_config.json`:
+Easiest: download [`health-export.mcpb`](https://github.com/PhilipAD/health-export-mcp/releases/latest/download/health-export.mcpb) and open it, or drag it into **Claude Desktop → Settings → Extensions**. Desktop runs it with its own Node, so there's no JSON and nothing to put on your PATH.
+
+Or edit `~/Library/Application Support/Claude/claude_desktop_config.json`:
 
 ```json
 {
   "mcpServers": {
     "health-export": {
-      "command": "node",
-      "args": ["/ABSOLUTE/PATH/TO/health-export-mcp/server.mjs"],
-      "env": { "HEALTH_DATA_DIR": "~/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents" }
+      "command": "npx",
+      "args": ["-y", "health-export-mcp"]
     }
   }
 }
 ```
 
-Or drag `health-export.mcpb` into **Claude Desktop → Settings → Extensions** (no JSON).
+On a Mac the server reads the app's iCloud Drive folder when `HEALTH_DATA_DIR` isn't set (1.7.3+). If Desktop logs `spawn npx ENOENT`, its PATH can't see Node (common with nvm or Homebrew): set `"command"` to the full path from `which npx`, or use the `.mcpb`. To pin a vetted local checkout instead, use `"command": "node", "args": ["/ABSOLUTE/PATH/TO/health-export-mcp/server.mjs"]`.
 
 ## Cursor
 

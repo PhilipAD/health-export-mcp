@@ -1,45 +1,52 @@
 # health-export-mcp
 
-**Query your own Apple Health data from any MCP client.**
+**An MCP server for your own Apple Health data.** 194 metrics, 16 read-only tools and 22 prompts over local stdio, with zero dependencies, no account and no server of ours in the path. Your agent gets JSON with units, date ranges and coverage, and answers from your numbers.
 
-`health-export-mcp` is an open-source, **zero-dependency** [Model Context Protocol (MCP)](https://modelcontextprotocol.io) server. It reads the Apple Health / HealthKit export on your own machine and answers your agent's questions from it: **194 metrics**, **16 tools** and **22 prompts**, as clean JSON. Read-only, local-first, no account, and no developer server in the path.
+<p align="center">
+  <a href="https://www.npmjs.com/package/health-export-mcp"><img alt="npm" src="https://img.shields.io/npm/v/health-export-mcp?color=cb3837" /></a>
+  <a href="https://github.com/PhilipAD/health-export-mcp/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/PhilipAD/health-export-mcp/actions/workflows/ci.yml/badge.svg" /></a>
+  <a href="SECURITY.md"><img alt="npm provenance" src="https://img.shields.io/badge/npm-provenance-2ea44f" /></a>
+  <img alt="dependencies: 0" src="https://img.shields.io/badge/dependencies-0-2ea44f" />
+  <a href="LICENSE"><img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue" /></a>
+  <a href="https://glama.ai/mcp/servers/PhilipAD/health-export-mcp"><img alt="Glama score" src="https://glama.ai/mcp/servers/PhilipAD/health-export-mcp/badges/score.svg" /></a>
+</p>
 
-**One command (Claude Code):**
-
-```bash
-claude mcp add --transport stdio health-export \
-  --env "HEALTH_DATA_DIR=$HOME/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents" \
-  -- npx -y health-export-mcp
-```
-
-Keep the double quotes: the iCloud folder name contains a space. No export yet? Try it on synthetic data first:
+## Try it in 30 seconds (no iPhone, synthetic data)
 
 ```bash
 claude mcp add --transport stdio health-export-demo -- npx -y health-export-mcp --demo
 ```
 
-Then ask: *"Use health-export: compare my HRV this week vs last week."* Using Claude Desktop, Cursor, VS Code, opencode, OpenClaw or Hermes? See the [Quickstart](#connect-apple-health-to-your-ai-agent-quickstart).
+Ask *"Use health-export-demo: how did my HRV this week compare with last week?"* The tool call returns this (every demo answer is watermarked):
 
-<p align="center">
-  <a href="https://glama.ai/mcp/servers/PhilipAD/health-export-mcp"><img alt="Glama MCP Server" src="https://glama.ai/mcp/servers/PhilipAD/health-export-mcp/badges/score.svg" /></a>
-  <img alt="MCP" src="https://img.shields.io/badge/Model_Context_Protocol-server-6E56CF" />
-  <img alt="zero dependencies" src="https://img.shields.io/badge/dependencies-0-2ea44f" />
-  <img alt="Node ≥18" src="https://img.shields.io/badge/node-%E2%89%A518-339933?logo=node.js&logoColor=white" />
-  <img alt="License: MIT" src="https://img.shields.io/badge/license-MIT-blue" />
-  <img alt="works with Claude, Cursor, ChatGPT, OpenClaw, Hermes" src="https://img.shields.io/badge/works_with-Claude_·_Cursor_·_opencode_·_VS_Code_·_OpenClaw_·_Hermes-111" />
-</p>
+```json
+[SYNTHETIC DEMO DATA] {"metric":"heart_rate_variability","unit":"ms","window":7,"recent":50.859,"prior":51.306,
+ "changePercent":-0.871,"direction":"flat","recentRange":{"from":"2026-08-12","to":"2026-08-18"},
+ "windowSatisfied":true,"coverage":{"firstDate":"2025-07-15","lastDate":"2026-08-18","days":400}}
+```
+
+## Use your real data (about 5 minutes, needs an iPhone)
+
+1. **Export.** Install [MetricBridge](https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8&ppid=2c28f88a-d94f-48f9-8e6a-74a8d89ce66e) on the iPhone, allow Health read access and tap **Export now**. It writes `.health-cache.json` to iCloud Drive (or a folder, or your LAN). The app has a free trial, then one purchase, no subscription. This server is MIT and free.
+2. **Connect.** Claude Code:
+   ```bash
+   claude mcp add --transport stdio health-export -- npx -y health-export-mcp
+   ```
+   On a Mac the server finds the app's iCloud Drive folder by itself (since 1.7.3). Elsewhere, or for another folder, add `--env "HEALTH_DATA_DIR=/path/to/folder"`, with the quotes if the path has a space.
+   **Claude Desktop:** download [`health-export.mcpb`](https://github.com/PhilipAD/health-export-mcp/releases/latest/download/health-export.mcpb) and open it; no JSON and no Node on your PATH needed. Cursor, VS Code, opencode, OpenClaw and Hermes: see [AGENTS.md](AGENTS.md) and the [quickstart](#connect-apple-health-to-your-ai-agent-quickstart).
+3. **Check it arrived.** `npx -y health-export-mcp --doctor` prints the folder it chose and why, each file's age, and freshness. iCloud can take a few minutes to bring a new export to the Mac.
+
+Then ask *"Use health-export: compare my resting heart rate this month with last month."*
 
 <p align="center">
   <img src="assets/architecture.svg" alt="Apple Health exports to iCloud, a folder, or your LAN; health-export-mcp reads it and serves 16 query tools to your AI agent" width="100%" />
 </p>
 
-> Ask your agent: *"Compare my HRV this week vs last week and tell me if I'm recovering."*, it calls the tools and answers from your **actual numbers**.
-
 ---
 
 ## What is health-export-mcp?
 
-It's an MCP server that turns your Apple Health export into a tool your AI agent can query in natural language, HRV, sleep, resting heart rate, steps, workouts, VO₂ max, and 180+ more.
+It's an MCP server that turns your Apple Health export into tools your AI agent can query in natural language: HRV, sleep, resting heart rate, steps, workouts, VO₂ max and 180+ more.
 
 - **Who it's for:** anyone who wants their AI to reason over their *real* health data instead of a stale CSV.
 - **What it isn't:** a cloud service. There's no developer server in the path, your data goes only where *you* point it.
@@ -55,7 +62,7 @@ It's an MCP server that turns your Apple Health export into a tool your AI agent
 
 ---
 
-## Connect Apple Health to your AI agent, Quickstart
+## Connect Apple Health to your AI agent: quickstart
 
 ### 1. Get your Apple Health data flowing
 
@@ -201,11 +208,11 @@ node server.mjs --help
 
 ## Use cases
 
-- **AI health coach**, let an agent reason over your real HRV, resting heart rate, and sleep to suggest when to push and when to recover, grounded in your actual numbers instead of generic advice.
-- **Training-load analysis**, pull workouts, VO₂ max, and heart-rate trends so your agent can flag overreaching, plot fitness progression, and pace a training block.
-- **Sleep correlations**, have your agent correlate deep-sleep duration against steps, caffeine, late workouts, or screen time to find what actually moves your sleep quality.
-- **Quantified-self dashboards**, feed clean JSON for any metric set and date range straight into a notebook, spreadsheet, or LLM-built dashboard for your own self-tracking.
-- **Personal research & experiments**, run n-of-1 experiments (supplement, routine, or protocol changes) and let an agent compare before/after periods across 194 metrics to see what changed.
+- **AI health coach:** let an agent reason over your real HRV, resting heart rate, and sleep to suggest when to push and when to recover, grounded in your actual numbers instead of generic advice.
+- **Training-load analysis:** pull workouts, VO₂ max, and heart-rate trends so your agent can flag overreaching, plot fitness progression, and pace a training block.
+- **Sleep correlations:** have your agent correlate deep-sleep duration against steps, caffeine, late workouts, or screen time to see what tends to go with your better nights (associations, not causes).
+- **Quantified-self dashboards:** feed clean JSON for any metric set and date range straight into a notebook, spreadsheet, or LLM-built dashboard for your own self-tracking.
+- **Personal research & experiments:** run n-of-1 experiments (supplement, routine, or protocol changes) and let an agent compare before/after periods across 194 metrics to see what changed.
 
 ---
 
@@ -231,7 +238,7 @@ Wellness-scoped and end-user-directed; no clinical or HIPAA work.
   <img src="assets/screenshot-destinations.png" alt="Export to iCloud, folder, LAN, or webhook" width="240" />
 </p>
 
-<p align="center"><sub><a href="https://www.healthexport.dev">MetricBridge</a>, exports your Apple Health to your agent, automatically.</sub></p>
+<p align="center"><sub><a href="https://www.healthexport.dev">MetricBridge</a> exports your Apple Health to your agent, automatically.</sub></p>
 
 <p align="center"><a href="https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8&ppid=2c28f88a-d94f-48f9-8e6a-74a8d89ce66e"><b>Download on the App Store →</b></a></p>
 
@@ -249,7 +256,7 @@ adds nothing. No network call is involved and nothing is sent anywhere.
 - **Optional pairing.** Set `PAIRING_SECRET` to the code the iOS app shows (Settings → Agent pairing) to gate access.
 - **Encrypted exports (optional).** If you switch on Export encryption in the iOS app, set `HEALTH_EXPORT_PASSPHRASE` (or `HEALTH_EXPORT_PASSPHRASE_FILE`) to the same passphrase and the server decrypts on your machine. See [Encrypted exports](#encrypted-exports).
 - **No telemetry.** The server makes no network requests. `get_mcp_status` always includes one static link to the companion app's website (and its App Store page), so the bridge is attributable back to install. Both links carry fixed campaign labels (`utm_source=mcp`, `utm_medium=agent-tool`, `utm_campaign=mcp-unlock`; `ct=mcpserver`, `ppid=…`) that are identical for every user and contain nothing about you or your data; they only count if you choose to open one.
-- **Auditable.** Zero dependencies and a few hundred lines of readable JavaScript, read every line.
+- **Auditable.** Zero runtime dependencies, about 4,000 lines of plain ES modules and no build step: what's on npm is what's in this repo, and npm provenance links each tarball to the commit and workflow that built it.
 - **Signed releases.** Hosted artifacts are minisign-signed and checksummed, see [Verifying releases](#verifying-releases).
 
 ---
@@ -312,7 +319,7 @@ curl -fsSL https://healthexport.dev/mcp/server.mjs -o server.mjs
 shasum -a 256 --ignore-missing -c SHA256SUMS || { echo "checksum mismatch, do not run"; exit 1; }
 ```
 
-The pinned, checksum-verified download above is the locked-down path. `npx -y health-export-mcp` instead resolves the latest version published to npm at run time (npm provides its own package integrity). Each GitHub release also carries a `SHA256SUMS` file and its `SHA256SUMS.minisig` signature made with the same key. Full policy, including npm provenance and how to report a vulnerability privately: **[SECURITY.md](SECURITY.md)**. Security overview: <https://healthexport.dev/security>.
+The pinned, checksum-verified download above is the locked-down path. `npx -y health-export-mcp` instead resolves the latest version published to npm at run time (npm provides its own package integrity). GitHub releases carry a `SHA256SUMS` file and a CycloneDX SBOM (`*.cdx.json`); a `SHA256SUMS.minisig` made with the same key is attached once the maintainer has signed that release locally, so check for it before relying on it. Full policy, including npm provenance and how to report a vulnerability privately: **[SECURITY.md](SECURITY.md)**. Security overview: <https://healthexport.dev/security>.
 
 ---
 
@@ -336,15 +343,16 @@ Not to us. The MCP server runs locally and reads only the export files or endpoi
 Any MCP client, Claude Desktop, Cursor, opencode, OpenClaw, Hermes, VS Code, natively. ChatGPT, Gemini, Grok, n8n, and Home Assistant consume the same data via webhook.
 
 **Do I need the iOS app?**
-The app is the easiest way to get Apple Health data off your iPhone in the format this server reads. You can also point `HEALTH_DATA_DIR` at any folder containing a compatible `.health-cache.json`.
+For your own data, yes: the server reads the file the MetricBridge app writes and never talks to HealthKit itself. To evaluate first, `--demo` serves a watermarked synthetic dataset with no app and no iPhone.
 
 ---
 
 ## Troubleshooting
 
-- **"No metrics found"**, confirm `HEALTH_DATA_DIR` points at the folder containing `.health-cache.json`, and that the app has exported at least once. Run `get_mcp_status` to see the resolved source and latest date.
-- **Server not visible in the client**, use an **absolute** path to `server.mjs`, ensure Node ≥18, and fully restart the client.
-- **Locked data error**, the export file is protected until first unlock after reboot; unlock your device once.
+- **"No metrics found":** run `npx -y health-export-mcp --doctor`. It prints the folder the server chose and why (`HEALTH_DATA_DIR`, the iCloud default on a Mac, or the current directory) and whether `.health-cache.json` is there. Confirm the app has exported at least once; `get_mcp_status` shows the same source and the latest date.
+- **Server not visible in the client:** run `npx -y health-export-mcp --doctor` in a terminal. If it works there, the client can't find `npx` (common for Claude Desktop with Node from nvm or Homebrew): use the `.mcpb`, or set `"command"` to the full path from `which npx`. Then fully quit and reopen the client.
+- **Exports stopped after a week:** the app's free trial ended. `get_freshness` reports the export as stale and links the unlock page; once the app is unlocked, exports resume with no change on this side.
+- **Locked data error:** the export file is protected until first unlock after reboot; unlock your device once.
 
 ---
 
@@ -376,11 +384,11 @@ Apple Health → MetricBridge (iOS) → .health-cache.json → health-export-mcp
 
 Other Apple Health MCP servers in the ecosystem, worth a look depending on your setup:
 
-- **[neiltron/apple-health-mcp](https://github.com/neiltron/apple-health-mcp)**, an MCP server that runs SQL-style queries over an Apple Health export.
-- **[the-momentum/apple-health-mcp-server](https://github.com/the-momentum/apple-health-mcp-server)**, an MCP server for analyzing Apple Health data exported from the Health app.
-- **[HealthyApps/health-auto-export-mcp-server](https://github.com/HealthyApps/health-auto-export-mcp-server)**, an MCP server for the Health Auto Export app's data.
+- **[neiltron/apple-health-mcp](https://github.com/neiltron/apple-health-mcp):** an MCP server that runs SQL-style queries over an Apple Health export.
+- **[the-momentum/apple-health-mcp-server](https://github.com/the-momentum/apple-health-mcp-server):** an MCP server for analyzing Apple Health data exported from the Health app.
+- **[HealthyApps/health-auto-export-mcp-server](https://github.com/HealthyApps/health-auto-export-mcp-server):** an MCP server for the Health Auto Export app's data.
 
-**How `health-export-mcp` differs:** zero dependencies, clean structured JSON, 194 Apple Health metrics, and the widest agent support (Claude, Cursor, opencode, OpenClaw, Hermes, VS Code natively, plus ChatGPT/Gemini/Grok/n8n/Home Assistant via webhook).
+**How `health-export-mcp` differs:** the iPhone app keeps the export current in the background, so there's no manual `export.xml` and no re-import; the server has zero dependencies and needs no Docker, database or Mac app; every answer carries its units, date range and coverage; and it's read-only end to end.
 
 ---
 
@@ -398,4 +406,3 @@ MIT, see [LICENSE](LICENSE). Contributions welcome.
 
 ---
 
-<sub>Apple Health MCP server · export Apple Health to AI · HealthKit MCP server · query Apple Health with Claude / ChatGPT / Cursor · Model Context Protocol health server · Apple Health to LLM · HRV, sleep & heart rate for AI agents.</sub>
