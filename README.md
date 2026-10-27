@@ -11,32 +11,31 @@
   <a href="https://glama.ai/mcp/servers/PhilipAD/health-export-mcp"><img alt="Glama score" src="https://glama.ai/mcp/servers/PhilipAD/health-export-mcp/badges/score.svg" /></a>
 </p>
 
-## Try it in 30 seconds (no iPhone, synthetic data)
+Docs and per-client config: **[healthexport.dev/mcp](https://www.healthexport.dev/mcp/)** · agents can run the setup from **[SKILL.md](https://www.healthexport.dev/SKILL.md)** · privacy: the server reads a local file and makes no network requests, so your health data never reaches us or a cloud AI through it.
+
+## Install: one command
 
 ```bash
-claude mcp add --transport stdio health-export-demo -- npx -y health-export-mcp --demo
+claude mcp add health-export -- npx -y health-export-mcp
 ```
 
-Ask *"Use health-export-demo: how did my HRV this week compare with last week?"* The tool call returns this (every demo answer is watermarked):
+On a Mac that is the whole install: since 1.7.3 the server finds the MetricBridge app's iCloud Drive folder by itself. On Windows or Linux, or for an export in another folder, add `--env "HEALTH_DATA_DIR=/path/to/folder"` before the `--`. Needs Node.js 18 or later. **Claude Desktop:** open [`health-export.mcpb`](https://github.com/PhilipAD/health-export-mcp/releases/latest/download/health-export.mcpb) instead (no JSON, no Node on your PATH). Cursor, VS Code, opencode, OpenClaw, Hermes: [AGENTS.md](AGENTS.md).
+
+Then ask *"Use health-export: how did my HRV this week compare with last week?"* The agent calls `get_trends` and gets numbers that carry their own provenance: unit, exact date ranges, whether each window was complete, and how much history the export holds. This is the real output on 1.7.3 (from the built-in `--demo` dataset, which is synthetic so it can be published; a real export answers with the same fields and without the watermark):
 
 ```json
 [SYNTHETIC DEMO DATA] {"metric":"heart_rate_variability","unit":"ms","window":7,"recent":50.859,"prior":51.306,
- "changePercent":-0.871,"direction":"flat","recentRange":{"from":"2026-08-12","to":"2026-08-18"},
- "windowSatisfied":true,"coverage":{"firstDate":"2025-07-15","lastDate":"2026-08-18","days":400}}
+ "change":-0.447,"changePercent":-0.871,"direction":"flat","recentRange":{"from":"2026-08-12","to":"2026-08-18"},
+ "recentDays":7,"priorDays":7,"windowSatisfied":true,"coverage":{"firstDate":"2025-07-15","lastDate":"2026-08-18","days":400}}
 ```
 
-## Use your real data (about 5 minutes, needs an iPhone)
+**No iPhone yet?** `claude mcp add health-export-demo -- npx -y health-export-mcp --demo` serves that watermarked synthetic dataset, so you can try every tool in 30 seconds before installing anything on a phone.
 
-1. **Export.** Install [MetricBridge](https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8&ppid=2c28f88a-d94f-48f9-8e6a-74a8d89ce66e) on the iPhone, allow Health read access and tap **Export now**. It writes `.health-cache.json` to iCloud Drive (or a folder, or your LAN). The app has a free trial, then one purchase, no subscription. This server is MIT and free.
-2. **Connect.** Claude Code:
-   ```bash
-   claude mcp add --transport stdio health-export -- npx -y health-export-mcp
-   ```
-   On a Mac the server finds the app's iCloud Drive folder by itself (since 1.7.3). Elsewhere, or for another folder, add `--env "HEALTH_DATA_DIR=/path/to/folder"`, with the quotes if the path has a space.
-   **Claude Desktop:** download [`health-export.mcpb`](https://github.com/PhilipAD/health-export-mcp/releases/latest/download/health-export.mcpb) and open it; no JSON and no Node on your PATH needed. Cursor, VS Code, opencode, OpenClaw and Hermes: see [AGENTS.md](AGENTS.md) and the [quickstart](#connect-apple-health-to-your-ai-agent-quickstart).
+## Use your real data (about 5 minutes the first time, needs an iPhone)
+
+1. **Export.** Install [MetricBridge](https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8&ppid=2c28f88a-d94f-48f9-8e6a-74a8d89ce66e) on the iPhone, allow Health read access and tap **Export now**. It writes `.health-cache.json` to iCloud Drive (or a folder, or your LAN). The app has a 7-day free trial, then one purchase ($24.99), no subscription. This server is MIT and free.
+2. **Connect.** The one command above (Claude Code), the `.mcpb` (Claude Desktop), or the block for your client in [AGENTS.md](AGENTS.md).
 3. **Check it arrived.** `npx -y health-export-mcp --doctor` prints the folder it chose and why, each file's age, and freshness. iCloud can take a few minutes to bring a new export to the Mac.
-
-Then ask *"Use health-export: compare my resting heart rate this month with last month."*
 
 <p align="center">
   <img src="assets/architecture.svg" alt="Apple Health exports to iCloud, a folder, or your LAN; health-export-mcp reads it and serves 16 query tools to your AI agent" width="100%" />
@@ -83,12 +82,12 @@ The companion iOS app **[MetricBridge](https://www.healthexport.dev)** exports y
 **Fastest, one command (Claude Code):**
 
 ```bash
-claude mcp add --transport stdio health-export \
-  --env "HEALTH_DATA_DIR=$HOME/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents" \
-  -- npx -y health-export-mcp
+claude mcp add health-export -- npx -y health-export-mcp
+# Windows, Linux, or an export outside iCloud Drive:
+claude mcp add health-export --env "HEALTH_DATA_DIR=/path/to/folder" -- npx -y health-export-mcp
 ```
 
-Everything before `--` is an option for `claude mcp add`, everything after it is the command that starts the server. The path is double-quoted because the iCloud folder name contains a space, and `$HOME` is used because a quoted `~` is not expanded by the shell. Exporting somewhere else? Replace the path with your own folder. Add `--scope user` to make the server available in every project (the default scope is the current project only). Check it with `claude mcp list`.
+Everything before `--` is an option for `claude mcp add`, everything after it is the command that starts the server. On a Mac the server reads the app's iCloud Drive folder when `HEALTH_DATA_DIR` is unset (1.7.3+); if you set it to that folder by hand, double-quote it (the folder name contains a space) and use `$HOME`, because a quoted `~` is not expanded by the shell. Add `--scope user` to make the server available in every project (the default scope is the current project only). Check it with `claude mcp list`.
 
 **Claude Desktop** (`~/Library/Application Support/Claude/claude_desktop_config.json`), and any client that takes an `mcpServers` block:
 
@@ -97,14 +96,13 @@ Everything before `--` is an option for `claude mcp add`, everything after it is
   "mcpServers": {
     "health-export": {
       "command": "npx",
-      "args": ["-y", "health-export-mcp"],
-      "env": { "HEALTH_DATA_DIR": "~/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents" }
+      "args": ["-y", "health-export-mcp"]
     }
   }
 }
 ```
 
-> `npx -y` fetches the published package at run time without an install prompt (npm verifies package integrity), so it runs anywhere with no clone or absolute path. The server expands a leading `~` in `HEALTH_DATA_DIR` itself, so the JSON form can keep it. Prefer to pin a vetted local checkout instead? Use `"command": "node", "args": ["REPLACE_WITH_ABSOLUTE_PATH/server.mjs"]`, get the path with `node -e "console.log(process.cwd()+'/server.mjs')"` inside the repo.
+> Off a Mac, or for another folder, add `"env": { "HEALTH_DATA_DIR": "/path/to/folder" }` to the entry (a leading `~` is expanded by the server). `npx -y` fetches the published package at run time without an install prompt (npm verifies package integrity), so it runs anywhere with no clone or absolute path. The server expands a leading `~` in `HEALTH_DATA_DIR` itself, so the JSON form can keep it. Prefer to pin a vetted local checkout instead? Use `"command": "node", "args": ["REPLACE_WITH_ABSOLUTE_PATH/server.mjs"]`, get the path with `node -e "console.log(process.cwd()+'/server.mjs')"` inside the repo.
 > Or skip JSON entirely, drag **`health-export.mcpb`** into **Claude Desktop → Settings → Extensions**.
 
 **Auto-configure from a clone:**

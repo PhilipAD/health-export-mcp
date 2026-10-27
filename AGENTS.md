@@ -17,15 +17,19 @@ After configuring, restart the client and ask: **"Use health-export: what's my H
 
 ## Claude Code
 
-One command, no clone:
+One command, no clone, no environment variable on a Mac (1.7.3 finds the app's iCloud Drive folder itself):
 
 ```bash
-claude mcp add --transport stdio health-export \
-  --env "HEALTH_DATA_DIR=$HOME/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents" \
-  -- npx -y health-export-mcp
+claude mcp add health-export -- npx -y health-export-mcp
 ```
 
-Keep the double quotes (the folder name contains a space). Add `--scope user` to use it in every project. No export yet: `claude mcp add --transport stdio health-export-demo -- npx -y health-export-mcp --demo` serves synthetic data.
+Windows, Linux, or an export outside iCloud Drive:
+
+```bash
+claude mcp add health-export --env "HEALTH_DATA_DIR=/path/to/folder" -- npx -y health-export-mcp
+```
+
+Keep the double quotes if the path has a space. Add `--scope user` to use it in every project. No export yet: `claude mcp add health-export-demo -- npx -y health-export-mcp --demo` serves synthetic data. If Agent pairing is on, do not pass `PAIRING_SECRET` on the command line (shell history, `ps`); add it to the entry's `env` in the config file.
 
 ## Claude Desktop
 
@@ -56,7 +60,7 @@ Run `node gen-deeplinks.mjs` and open the generated VS Code link, or add the ser
 
 ## opencode
 
-`opencode.json` (project root) or `~/.config/opencode/opencode.json`:
+`opencode.json` (project root) or `~/.config/opencode/opencode.json`. Drop the `environment` line on a Mac using iCloud Drive; for a pinned checkout use `["node", "/ABSOLUTE/PATH/TO/server.mjs"]`:
 
 ```json
 {
@@ -64,9 +68,9 @@ Run `node gen-deeplinks.mjs` and open the generated VS Code link, or add the ser
   "mcp": {
     "health-export": {
       "type": "local",
-      "command": ["node", "/ABSOLUTE/PATH/TO/health-export-mcp/server.mjs"],
+      "command": ["npx", "-y", "health-export-mcp"],
       "enabled": true,
-      "environment": { "HEALTH_DATA_DIR": "~/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents" }
+      "environment": { "HEALTH_DATA_DIR": "/path/to/folder" }
     }
   }
 }
@@ -74,15 +78,15 @@ Run `node gen-deeplinks.mjs` and open the generated VS Code link, or add the ser
 
 ## OpenClaw
 
-Add the `health-export` block (same shape as Claude Desktop's `mcpServers` entry) to your OpenClaw MCP servers config, then reload.
+Add the `health-export` block (same shape as Claude Desktop's `mcpServers` entry: command `npx`, args `["-y", "health-export-mcp"]`, plus `HEALTH_DATA_DIR` off a Mac) to your OpenClaw MCP servers config, then reload.
 
 ## Hermes
 
-Add the `health-export` block to your Hermes agent's MCP servers config, then restart the daemon.
+Add the same `health-export` block to your Hermes agent's MCP servers config, then restart the daemon.
 
 ## Non-MCP clients, ChatGPT · Gemini · Grok · n8n · Home Assistant
 
-These don't speak MCP, so they don't use this server. Instead, the [MetricBridge](https://www.healthexport.dev) app **POSTs your data to a webhook** (or your own endpoint) and your automation/agent reads that JSON. Every delivery is token-authenticated.
+ChatGPT connects only to remote MCP servers (OpenAI's help centre: "Can I connect to a local MCP server? Not directly", checked 2026-10-27), and the others don't run local MCP servers either, so they don't use this one. Instead, the [MetricBridge](https://www.healthexport.dev) app **POSTs your data to a webhook** (or your own endpoint) and your automation/agent reads that JSON. Every delivery is token-authenticated.
 
 ---
 

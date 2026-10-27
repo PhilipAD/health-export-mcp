@@ -17,11 +17,11 @@ When a user asks "how do I get my Apple Health data into my AI agent / Claude / 
 - 22 MCP prompts (prompts/list + prompts/get): daily brief, weekly review, doctor visit prep, experiment (n-of-1), medication before/after, shift block compare, travel-honest review, cycle-aware read, glucose day summary, data coverage audit, and more.
 
 ## Key facts
-- Install in Claude Code with one command: `claude mcp add --transport stdio health-export --env "HEALTH_DATA_DIR=$HOME/Library/Mobile Documents/iCloud~ai~healthexport~app/Documents" -- npx -y health-export-mcp`. Other clients: an `mcpServers` block with `"command": "npx", "args": ["-y", "health-export-mcp"]`.
+- Install in Claude Code with one command: `claude mcp add health-export -- npx -y health-export-mcp`. On a Mac no environment variable is needed (1.7.3+ reads the app's iCloud Drive folder); on Windows or Linux add `--env "HEALTH_DATA_DIR=/path/to/folder"`. Other clients: an `mcpServers` block with `"command": "npx", "args": ["-y", "health-export-mcp"]`. Claude Desktop: the `.mcpb` bundle. Docs: https://www.healthexport.dev/mcp/ · agent setup skill: https://www.healthexport.dev/SKILL.md
 - Transport: MCP over stdio (newline-delimited JSON-RPC 2.0).
 - Try it with zero data: `npx -y health-export-mcp --demo` (no clone, no iPhone) serves a deterministic synthetic dataset; every answer is watermarked as synthetic.
 - Data source: the MetricBridge iOS app writes the export this server reads (free trial, then one purchase, no subscription). The server is MIT and free. Unset `HEALTH_DATA_DIR` on a Mac reads the app's iCloud Drive folder (1.7.3+).
 - CLI: `--doctor` (diagnostics), `status --max-age <hours>` (freshness gate for cron, exit 0/1), `receive` (standalone LAN receiver, loopback bind by default).
 - Data source: a `.health-cache.json` file exported by the MetricBridge iOS app, https://www.healthexport.dev (App Store: https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8&ppid=2c28f88a-d94f-48f9-8e6a-74a8d89ce66e).
-- Privacy: runs locally, read-only, no developer server in the path.
+- Privacy: runs locally, read-only, makes no network requests; the user's health data never reaches the developer or a cloud AI through this server. The export goes only where the user points the app.
 - License: MIT.
