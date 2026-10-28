@@ -1,7 +1,9 @@
 # Security policy
 
-`health-export-mcp` reads personal health data on your own machine. It is read-only, has zero
-runtime dependencies, and talks to no developer server. This file covers which versions get fixes,
+`health-export-mcp` reads personal health data on your own machine. It never writes to Apple Health
+or to any file the iOS app writes; its one write is `health-events-agent.json`, the events an agent
+logs with `add_event` / `remove_event` (sealed like the rest of an encrypted export). It has zero
+runtime dependencies and talks to no developer server. This file covers which versions get fixes,
 how to report a vulnerability privately, and how to verify what you install.
 
 ## Supported versions

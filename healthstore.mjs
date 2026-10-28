@@ -21,6 +21,8 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import os from 'node:os';
+// Only for the advisory iCloud status probe on macOS (osascript, stat); never for data.
+import { execFileSync } from 'node:child_process';
 // Sibling modules: demo.mjs is the deterministic synthetic dataset behind --demo; events.mjs reads
 // the optional context files (events, profile, sessions, cycles, days). events.mjs imports helpers
 // back from this file; the cycle is safe because both sides touch the other's bindings only inside
@@ -606,7 +608,8 @@ export async function status() {
     // agent's first call already tells it whether to trust today's numbers.
     freshness: fresh,
     // Late-arrival recompute (cache schema minor 1). `supported: false` means the app that wrote
-    // this cache predates it: past days are only as fresh as the run that last covered them.
+    // this cache predates it: past days are only as fresh as the run that last covered them;
+    // `null` means the cache carries no _meta to tell (see `reason`).
     recompute: (() => {
       const meta = cacheMeta();
       const rec = meta?.recompute ?? null;
@@ -618,9 +621,16 @@ export async function status() {
       }
       const capped = Object.entries(rec?.capped ?? {}).filter(([, c]) => markerLive(c)).map(([metric, c]) => ({ metric, ...c }))
         .sort((x, y) => x.metric.localeCompare(y.metric));
+      // A LAN receiver cache has no _meta but does carry `r` stamps pushed by the app. A cache with
+      // no _meta and no stamps (hand-edited, a pre-1.2 app, a receiver that never saw a rebuild)
+      // says nothing either way: `null` with the reason, not `false` ("this app cannot"), which
+      // read as a defect in an app that may well support it (contract section 10.7).
+      const supported = Number(meta?.schemaMinor ?? 0) >= 1 || rebuiltDays > 0 ? true : meta ? false : null;
       return {
-        // A LAN receiver cache has no _meta but does carry `r` stamps pushed by the app.
-        supported: Number(meta?.schemaMinor ?? 0) >= 1 || rebuiltDays > 0,
+        supported,
+        ...(supported === null && {
+          reason: 'This cache has no _meta block (written by an app older than 1.2, a LAN receiver, or edited by hand), so whether the app rebuilds days after late-arriving samples cannot be told from the file. No day in it carries a rebuild stamp.',
+        }),
         ...(rec?.capDays != null && { capDays: rec.capDays }),
         ...(rec?.lastRebuiltAt && { recomputed_at: rec.lastRebuiltAt, lastRebuiltDays: rec.lastRebuiltDays ?? null }),
         backfilled_days: rebuiltDays,
@@ -640,9 +650,15 @@ export async function status() {
     // Additive presence flags for the optional context files, so an agent knows which of the
     // context tools can answer before calling them. Absence means "not exported", never "none".
     contextFiles: DEMO
-      ? { events: true, profile: true, sessions: true, cycles: true, days: true, sources: false }
+      ? { events: true, agentEvents: false, readings: false, manifest: false, profile: true, sessions: true, cycles: true, days: true, sources: false }
       : {
-          events: !!ev.loadEventsFile(),
+          // Either events file: the app's health-events.json or the agent's health-events-agent.json.
+          events: !!ev.loadEventsFile() || fileExists(ev.AGENT_EVENTS_FILE),
+          agentEvents: fileExists(ev.AGENT_EVENTS_FILE),
+          // health-readings.json (contract 10.4): individual blood pressure readings.
+          readings: fileExists(READINGS_FILE),
+          // .health-manifest.json (contract 10.1): what the phone last wrote, for the stale-copy check.
+          manifest: fileExists(MANIFEST_FILE),
           profile: fileExists('health-profile.json'),
           sessions: fileExists('health-sessions.json'),
           cycles: fileExists('health-cycles.json'),
@@ -667,7 +683,8 @@ function fileExists(name) {
 // morning's data or three weeks old. Everything here is derived from what already exists: file
 // write times, the cache's `_meta.writtenAt`, and the newest daily point. The rule that decides
 // `stale` is the SAME one the `node server.mjs status --max-age N` cron gate uses (age of the
-// newest write across the file family), so a tool answer and the gate's exit code never disagree.
+// newest write of the CORE files, plus the stale-copy check below), so a tool answer and the
+// gate's exit code never disagree.
 
 /** The complete file family one export can produce. Shared by doctor, the cron gate and
  *  `freshness()`, because "the cache is fresh but events are three weeks stale" is a real state. */
@@ -676,12 +693,23 @@ export const DATA_FILES = [
   '.health-workouts-cache.json',
   'health-intraday.json',
   'health-events.json',
+  'health-events-agent.json',
   'health-profile.json',
   'health-sessions.json',
   'health-cycles.json',
   'health-days.json',
   'health-sources.json',
+  'health-readings.json',
 ];
+
+/** The files that ARE the export: `stale` is judged on these alone (contract section 10.1).
+ *  It used to be the newest write of the whole family, and the hourly intraday file (or an events
+ *  file touched minutes ago) made a day-old cache and last week's sleep sessions read as fresh.
+ *  Every other file is still reported per file; it just no longer vouches for the core. */
+export const CORE_FILES = ['.health-cache.json', 'health-sessions.json'];
+
+/** What the phone says it last wrote, per file (contract section 10.1). Hidden, written LAST. */
+export const MANIFEST_FILE = '.health-manifest.json';
 
 /** One daily automation run plus two hours of slack: iOS schedules background work loosely, so a
  *  24-hour threshold would flag a daily export that ran a few minutes late as stale. */
@@ -713,14 +741,251 @@ function statData(name) {
   } catch { return null; }
 }
 
-/** The most recently written file of the family, as {file, mtimeMs, at}, or null when none exist. */
+/** The write `stale` is judged on, as {file, mtimeMs, at, basis}, or null when no file exists: the
+ *  newest of the CORE files (`basis: 'core_files'`). A folder holding none of them (only an events
+ *  or intraday file) falls back to the newest of the whole family (`basis: 'all_files'`), so an
+ *  empty folder still reads as no_data and nothing else changes for it. */
 export function newestWrite() {
-  let newest = null;
-  for (const name of DATA_FILES) {
-    const st = statData(name);
-    if (st && (!newest || st.mtimeMs > newest.mtimeMs)) newest = { file: name, mtimeMs: st.mtimeMs };
+  const newestOf = (names) => {
+    let newest = null;
+    for (const name of names) {
+      const st = statData(name);
+      if (st && (!newest || st.mtimeMs > newest.mtimeMs)) newest = { file: name, mtimeMs: st.mtimeMs };
+    }
+    return newest;
+  };
+  const core = newestOf(CORE_FILES);
+  const newest = core ?? newestOf(DATA_FILES);
+  return newest && { ...newest, at: new Date(newest.mtimeMs).toISOString(), basis: core ? 'core_files' : 'all_files' };
+}
+
+// ---- Export integrity: is this machine's copy the one the phone wrote? (contract 10.1) ----
+// A Mac reads the export through iCloud Drive, which can sit on yesterday's version of a file for
+// hours while the phone has long since written today's. File times cannot reveal that (the stale
+// copy carries the time it was written, which was fine yesterday), so the app writes
+// `.health-manifest.json` LAST in every run: per file, when it wrote it, its size and the sha256 of
+// the exact bytes on disk (sealed bytes when encryption is on, so no passphrase is needed here).
+// A local file whose size or hash differs and which is not newer than its entry is a stale copy.
+// On macOS, iCloud's own per-file status is read as a second, advisory opinion.
+
+// Hashing a full-history cache is tens of milliseconds; memoized on (mtime, size) like the parse,
+// so repeated freshness and status calls stay cheap until the file actually changes.
+const _hashMemo = new Map();
+function fileSha256(file, st) {
+  const stamp = `${st.mtimeMs}:${st.size}`;
+  const hit = _hashMemo.get(file);
+  if (hit && hit.stamp === stamp) return hit.hash;
+  let hash = null;
+  try { hash = crypto.createHash('sha256').update(fs.readFileSync(file)).digest('hex'); } catch { hash = null; }
+  _hashMemo.set(file, { stamp, hash });
+  return hash;
+}
+
+/** The parsed manifest as {manifest} | {error} | null (absent). A sealed manifest opens with the
+ *  passphrase like every other file; one that cannot be read is reported, never guessed around. */
+function loadManifest() {
+  let raw;
+  try { raw = readJSONCached(path.join(DATA_DIR, MANIFEST_FILE), null); }
+  catch (e) { return { error: e instanceof EnvelopeError ? e.code : String(e?.message || e) }; }
+  if (raw == null) return null;
+  if (typeof raw !== 'object' || !raw.files || typeof raw.files !== 'object' || Array.isArray(raw.files)) {
+    return { error: 'malformed' };
   }
-  return newest && { ...newest, at: new Date(newest.mtimeMs).toISOString() };
+  // A higher schema may change what an entry means; refuse it rather than misjudge every file.
+  if (Number(raw.schema) > 1) return { error: `unsupported_schema_${raw.schema}` };
+  return { manifest: raw };
+}
+
+const isoOrNull = (s) => (typeof s === 'string' && Number.isFinite(Date.parse(s)) ? new Date(Date.parse(s)).toISOString() : null);
+
+// iCloud's per-file download status, macOS only. `downloaded` means a local copy exists but iCloud
+// knows of a newer version it has not fetched: exactly the stale copy, from the system's side.
+export const ICLOUD_ROOT = path.join(os.homedir(), 'Library', 'Mobile Documents');
+const ICLOUD_STATUS = {
+  NSURLUbiquitousItemDownloadingStatusCurrent: 'current',
+  NSURLUbiquitousItemDownloadingStatusDownloaded: 'downloaded',
+  NSURLUbiquitousItemDownloadingStatusNotDownloaded: 'not_downloaded',
+};
+// JXA, so nothing is installed: reads NSURLUbiquitousItemDownloadingStatusKey for each path argument.
+const ICLOUD_JXA = 'ObjC.import("Foundation");function run(argv){var o={};argv.forEach(function(p){var v=Ref(),s=null;'
+  + 'try{if($.NSURL.fileURLWithPath(p).getResourceValueForKeyError(v,$.NSURLUbiquitousItemDownloadingStatusKey,null)&&v[0])s=ObjC.unwrap(v[0]);}catch(e){}'
+  + 'o[p]=s===undefined?null:s;});return JSON.stringify(o);}';
+const ICLOUD_TIMEOUT_MS = 1500;
+// Cached per (mtime, size), and for at most a minute: iCloud can learn of a newer version without
+// the local file changing at all, so the mtime alone would pin a `current` answer for ever.
+const ICLOUD_TTL_MS = 60000;
+const _icloudMemo = new Map();
+
+/** Advisory iCloud status for `names` in the data folder: {name: {status, dataless}} with status
+ *  current | downloaded | not_downloaded | null (unknown). Null (no probe at all) off macOS, or when
+ *  the folder is not inside ~/Library/Mobile Documents. Never throws; each child process is capped
+ *  at 1.5 s. Every dependency is injectable for tests. */
+export function icloudStatus(names, { platform = process.platform, dir = DATA_DIR, root = ICLOUD_ROOT, exec = execFileSync, now = Date.now() } = {}) {
+  if (platform !== 'darwin') return null;
+  const abs = path.resolve(dir);
+  if (!(abs + path.sep).startsWith(path.resolve(root) + path.sep)) return null;
+  const present = [];
+  for (const name of names) {
+    try { const st = fs.statSync(path.join(abs, name)); if (st.isFile()) present.push({ name, file: path.join(abs, name), stamp: `${st.mtimeMs}:${st.size}` }); } catch {}
+  }
+  if (!present.length) return {};
+  const cached = present.map((p) => _icloudMemo.get(p.file));
+  if (cached.every((c, i) => c && c.stamp === present[i].stamp && now - c.at < ICLOUD_TTL_MS)) {
+    return Object.fromEntries(present.map((p, i) => [p.name, cached[i].value]));
+  }
+  const files = present.map((p) => p.file);
+  let statuses = {};
+  try {
+    const out = exec('/usr/bin/osascript', ['-l', 'JavaScript', '-e', ICLOUD_JXA, ...files],
+      { encoding: 'utf8', timeout: ICLOUD_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'ignore'] });
+    statuses = JSON.parse(String(out).trim() || '{}') || {};
+  } catch { statuses = {}; }
+  // A dataless file is an evicted placeholder: its bytes live only in iCloud until something reads it.
+  let flags = [];
+  try {
+    flags = String(exec('/usr/bin/stat', ['-f', '%Sf', ...files],
+      { encoding: 'utf8', timeout: ICLOUD_TIMEOUT_MS, stdio: ['ignore', 'pipe', 'ignore'] })).split('\n');
+  } catch { flags = []; }
+  const result = {};
+  present.forEach((p, i) => {
+    const value = { status: ICLOUD_STATUS[statuses[p.file]] ?? null, dataless: /\bdataless\b/.test(flags[i] ?? '') };
+    _icloudMemo.set(p.file, { stamp: p.stamp, at: now, value });
+    result[p.name] = value;
+  });
+  return result;
+}
+
+/** Compare this machine's files with what the phone last wrote. Synchronous and cheap (hashes and
+ *  the iCloud probe are memoized), shared by freshness() and the cron gate so they cannot disagree.
+ *  `readContent:false` skips the one check that reads file contents (the sessions file), for a
+ *  caller that is not past the pairing gate. `icloud` replaces the probe (tests). */
+export function exportIntegrity({ now = Date.now(), readContent = true, icloud } = {}) {
+  const loaded = loadManifest();
+  const manifest = loaded?.manifest ?? null;
+  const perFile = {};
+  const staleCopy = [];
+  const missingLocally = [];
+  let manifestBehind = false;
+  const flag = (file, st, phoneWrittenAt, reason) => {
+    const seen = staleCopy.find((s) => s.file === file);
+    if (seen) { if (reason === 'last_night_missing') seen.lastNightMissing = true; return; }
+    staleCopy.push({
+      file, core: CORE_FILES.includes(file),
+      localWrittenAt: st ? new Date(st.mtimeMs).toISOString() : null,
+      phoneWrittenAt: phoneWrittenAt ?? null,
+      reason,
+    });
+  };
+
+  // iCloud first: a dataless (evicted) file must not be hashed, because reading it makes the system
+  // download it in the foreground, which can take far longer than a status call should.
+  const probe = typeof icloud === 'function' ? icloud(CORE_FILES) : icloudStatus(CORE_FILES, { now });
+
+  if (manifest) {
+    for (const [file, entry] of Object.entries(manifest.files)) {
+      if (!entry || typeof entry !== 'object' || file.includes('/') || file.includes('\\')) continue;
+      const st = statData(file);
+      const phoneAt = isoOrNull(entry.writtenAt) ?? isoOrNull(manifest.writtenAt);
+      if (!st) { missingLocally.push(file); continue; }
+      const sizeOk = !Number.isFinite(entry.bytes) || entry.bytes === st.size;
+      const skipHash = !sizeOk || typeof entry.sha256 !== 'string' || probe?.[file]?.dataless;
+      const hashOk = skipHash ? null : fileSha256(path.join(DATA_DIR, file), st) === entry.sha256.toLowerCase();
+      const matches = sizeOk && hashOk !== false;
+      const localNewer = !matches && phoneAt != null && st.mtimeMs > Date.parse(phoneAt);
+      perFile[file] = {
+        phoneWrittenAt: phoneAt,
+        matchesPhone: matches,
+        ...(hashOk === null && sizeOk && { verifiedBy: 'size' }),
+        ...(localNewer && { localNewer: true }),
+      };
+      // Local NEWER than the entry: the manifest is the lagging file, not the data. Not stale.
+      if (localNewer) manifestBehind = true;
+      else if (!matches) flag(file, st, phoneAt, sizeOk ? 'hash_mismatch' : 'size_mismatch');
+    }
+    // The phone's last run had a night ending at lastNight.end; a local sessions file whose newest
+    // session ends before that is yesterday's copy, even if its size happened to match.
+    const lastNightEnd = Date.parse(manifest.lastNight?.end);
+    const sst = statData('health-sessions.json');
+    if (readContent && Number.isFinite(lastNightEnd) && sst && !perFile['health-sessions.json']?.localNewer) {
+      const newestEnd = newestSessionEnd();
+      if (newestEnd != null && newestEnd < lastNightEnd - 60000) {
+        flag('health-sessions.json', sst, isoOrNull(manifest.files['health-sessions.json']?.writtenAt) ?? isoOrNull(manifest.writtenAt), 'last_night_missing');
+      }
+    }
+  }
+  // iCloud saying `downloaded` on a core file is the system's own word that a newer version exists.
+  for (const file of CORE_FILES) {
+    if (probe?.[file]?.status === 'downloaded') {
+      flag(file, statData(file), perFile[file]?.phoneWrittenAt ?? null, 'icloud_newer_version');
+    }
+  }
+
+  // Without a manifest, the one content signal left: does the sessions file hold a night ending
+  // today? Advisory only. People skip nights, take the watch off, or have not slept yet.
+  let sessionsLastNight;
+  if (!manifest && readContent && statData('health-sessions.json')) {
+    const days = sessionEndDays();
+    if (days) sessionsLastNight = days.has(localDay(now)) ? 'present' : 'absent';
+  }
+
+  return {
+    manifest: manifest
+      ? { present: true, generation: manifest.generation ?? null, writtenAt: isoOrNull(manifest.writtenAt), app: manifest.app ?? null,
+          lastNight: manifest.lastNight ?? null, ...(missingLocally.length && { missingLocally }) }
+      : loaded?.error ? { present: true, readable: false, error: loaded.error } : { present: false },
+    perFile,
+    staleCopy,
+    coreStaleCopy: staleCopy.some((s) => s.core),
+    manifestBehind,
+    sessionsLastNight,
+    icloud: probe,
+  };
+}
+
+function loadSessionsRaw() {
+  try {
+    const raw = readJSONCached(path.join(DATA_DIR, 'health-sessions.json'), null);
+    return raw && Array.isArray(raw.sessions) ? raw.sessions : null;
+  } catch { return null; }   // sealed without a passphrase: the content check is simply skipped
+}
+
+/** Epoch ms of the newest session end in the LOCAL sessions file, or null. */
+function newestSessionEnd() {
+  const sessions = loadSessionsRaw();
+  if (!sessions) return null;
+  let newest = null;
+  for (const s of sessions) {
+    const t = Date.parse(s?.end);
+    if (Number.isFinite(t) && (newest == null || t > newest)) newest = t;
+  }
+  return newest;
+}
+
+/** The waking days sessions end on (the session's `day`, else the date part of its local `end`). */
+function sessionEndDays() {
+  const sessions = loadSessionsRaw();
+  if (!sessions) return null;
+  const days = new Set();
+  for (const s of sessions) {
+    const d = typeof s?.day === 'string' ? s.day : typeof s?.end === 'string' ? s.end.slice(0, 10) : null;
+    if (d) days.add(d);
+  }
+  return days;
+}
+
+/** The plain-language fix for a stale copy. It never suggests a command that deletes anything:
+ *  Finder's Remove Download drops only this Mac's local copy, and says so. */
+function staleCopyAdvice(copies) {
+  const names = copies.map((s) => s.file).join(', ');
+  const phone = copies.map((s) => s.phoneWrittenAt).filter(Boolean).sort().pop();
+  const local = copies.map((s) => s.localWrittenAt).filter(Boolean).sort()[0];
+  const lastNight = copies.some((s) => s.reason === 'last_night_missing' || s.lastNightMissing);
+  return `This Mac is reading an older copy of ${names} than the phone last wrote`
+    + (phone ? ` (phone: ${phone}${local ? `, this Mac: ${local}` : ''})` : '')
+    + (lastNight ? ', and last night\'s sleep is missing from this copy' : '')
+    + '. iCloud Drive on this Mac has not downloaded the latest version yet, so answers would describe the older data. '
+    + 'It usually catches up within minutes: wait, then check again. To hurry it, open the MetricBridge folder in iCloud Drive in Finder and choose Download Now on the file; '
+    + 'if that does not help, choose Remove Download (this removes only this Mac\'s local copy, the phone and iCloud keep theirs) and let it download again.';
 }
 
 // Never negative: a file stamped slightly in the future (clock skew between the phone, the sync
@@ -735,8 +1000,9 @@ function localDay(ms) {
 }
 
 /** Machine-readable freshness of the exported files. `detail:false` drops the per-file breakdown
- *  (used for the compact block inside get_mcp_status). `now` is injectable for tests. */
-export async function freshness({ maxAgeHours, detail = true, now = Date.now() } = {}) {
+ *  (used for the compact block inside get_mcp_status) but keeps the stale-copy verdict. `now` and
+ *  `_icloud` (a stand-in for the macOS iCloud probe) are injectable for tests only. */
+export async function freshness({ maxAgeHours, detail = true, now = Date.now(), _icloud } = {}) {
   const threshold = staleAfterHours(maxAgeHours);
   const base = { stale_after_hours: threshold, checked_at: new Date(now).toISOString() };
   if (DEMO) {
@@ -762,9 +1028,11 @@ export async function freshness({ maxAgeHours, detail = true, now = Date.now() }
     const st = statData(name);
     if (!st) continue;
     const age = rawAgeHours(st.mtimeMs, now);
-    files[name] = { lastWrite: new Date(st.mtimeMs).toISOString(), age_hours: round1(age) };
+    files[name] = { lastWrite: new Date(st.mtimeMs).toISOString(), age_hours: round1(age), ...(CORE_FILES.includes(name) && { core: true }) };
     if (age > threshold) staleFiles.push(name);
   }
+  const integrity = exportIntegrity({ now, icloud: _icloud });
+  for (const [name, info] of Object.entries(integrity.perFile)) if (files[name]) Object.assign(files[name], info);
 
   // When the phone wrote the daily cache. `_meta.writtenAt` is the app's own stamp and survives a
   // slow iCloud sync; a cache without it (pre-1.2 app, LAN receiver) falls back to the file time.
@@ -812,7 +1080,12 @@ export async function freshness({ maxAgeHours, detail = true, now = Date.now() }
     };
   }
   const rawAge = rawAgeHours(newest.mtimeMs, now);
-  const stale = rawAge > threshold;
+  const ageStale = rawAge > threshold;
+  // A stale COPY of a core file is stale whatever its write time says: this machine is reading
+  // data the phone has already replaced. A stale copy of another file (intraday, events) is listed
+  // and named in the recommendation but, like that file's age, does not decide the verdict.
+  const staleCopy = integrity.coreStaleCopy;
+  const stale = ageStale || staleCopy;
   const age = round1(rawAge);
   // A cache that could not be read must not read as plainly usable even when its file is recent:
   // the data tools will fail on it. `state` stays a write-time verdict (stable values); the
@@ -822,7 +1095,8 @@ export async function freshness({ maxAgeHours, detail = true, now = Date.now() }
   // two-hour-old export into a purchase hint. It is also withheld when the cache exists but cannot
   // be read (an encrypted export without its passphrase): the app wrote that file, so the fix is
   // the passphrase, not the app -- the same rule as status()'s encrypted early return.
-  const trialHint = stale && rawAge > Math.max(staleAfterHours(), DEFAULT_STALE_AFTER_HOURS) && !cacheReadError;
+  // Never on a stale copy either: the phone IS exporting, this Mac just has not caught up.
+  const trialHint = ageStale && !staleCopy && rawAge > Math.max(staleAfterHours(), DEFAULT_STALE_AFTER_HOURS) && !cacheReadError;
   // The other half of the money moment: a FRESH export written by an app still inside its 7-day
   // free trial (the stale/trialHint path above only reaches a trial that already ENDED). The app
   // stamps `_meta.license` (non-health metadata) onto the cache from 1.x onward; an older cache
@@ -839,19 +1113,35 @@ export async function freshness({ maxAgeHours, detail = true, now = Date.now() }
   const readNote = cacheReadError
     ? ` The daily cache could not be read (${cacheReadError}), so data tools will fail until that is fixed; run get_mcp_status for the details.`
     : '';
+  // Advisory sentences that never change `state` on their own.
+  const otherCopies = integrity.staleCopy.filter((c) => !c.core);
+  const advisories = (otherCopies.length && !staleCopy
+    ? ` This Mac also holds an older copy of ${otherCopies.map((c) => c.file).join(', ')} than the phone last wrote; iCloud Drive has not downloaded it yet.`
+    : '')
+    + (integrity.sessionsLastNight === 'absent'
+      ? ' No sleep session in health-sessions.json ends today. If the user slept with a tracker last night, the phone may not have exported since, or this Mac\'s copy is behind; it can also simply mean no night was recorded.'
+      : '');
   return {
-    state: stale ? 'stale' : 'fresh',
+    state: staleCopy ? 'stale_copy' : stale ? 'stale' : 'fresh',
     stale,
     ...base,
     as_of: asOf,
     as_of_source: asOfSource,
     newest_write: { file: newest.file, at: newest.at },
+    // Which files the age verdict was judged on: the core files, or (none present) the whole family.
+    stale_basis: newest.basis,
     age_hours: age,
     last_data_date: lastDataDate,
     data_lag_days: dataLagDays,
     ...(cacheReadError && { cacheReadError }),
-    ...(detail && { files, stale_files: staleFiles }),
-    recommendation: (stale
+    ...(integrity.staleCopy.length && { stale_copy: integrity.staleCopy }),
+    ...(integrity.manifestBehind && { manifest_behind: true }),
+    ...(integrity.sessionsLastNight && { sessions_last_night: integrity.sessionsLastNight }),
+    ...(detail && { files, stale_files: staleFiles, manifest: integrity.manifest }),
+    ...(detail && integrity.icloud && { icloud: integrity.icloud }),
+    recommendation: (staleCopy
+      ? staleCopyAdvice(integrity.staleCopy.filter((c) => c.core))
+      : stale
       // A stale export is usually a sync the phone never finished or an ended free trial (the
       // app's LicenseGate stops exporting then) -- the second is the money moment. The app IS
       // installed here (only it writes these files), so the hint names the trial, not an install.
@@ -864,6 +1154,7 @@ export async function freshness({ maxAgeHours, detail = true, now = Date.now() }
         + (midTrial
           ? ` MetricBridge's free trial ${trialEnds}; the one-time unlock inside the iOS app keeps exports running after that (app website: ${UNLOCK_URL}).`
           : ''))
+      + advisories
       + readNote,
   };
 }
@@ -955,6 +1246,42 @@ export async function listMetrics() {
 
 const AGGREGATIONS = new Set(['sum', 'avg', 'min', 'max', 'latest']);
 
+// ---- Individual readings (health-readings.json, contract 10.4) ----
+const READINGS_FILE = 'health-readings.json';
+const BP_READING_METRICS = new Set(['blood_pressure_systolic', 'blood_pressure_diastolic']);
+// A reading serializes to ~110 characters and every answer goes out twice (text + structured), so
+// 150 of them is ~33k on the wire beside a year of daily points: well inside the 100k default.
+const READINGS_CAP = 150;
+
+/** `readings` for the days in `points` (already range- and filter-limited), newest kept when over
+ *  the cap. {} when the file is absent or holds no reading on those days. At a rolled-up
+ *  granularity only a pointer is returned: readings belong next to the day they were taken. */
+function bpReadings(points, gran) {
+  if (DEMO) return {};
+  const raw = readJSONCached(path.join(DATA_DIR, READINGS_FILE), null);
+  const list = raw && Array.isArray(raw.bloodPressure) ? raw.bloodPressure : null;
+  if (!list) return {};
+  const days = new Set(points.map((p) => p.d));
+  const hits = list
+    .filter((r) => r && typeof r.t === 'string' && days.has(typeof r.day === 'string' ? r.day : r.t.slice(0, 10)))
+    .sort((a, b) => (Date.parse(a.t) || 0) - (Date.parse(b.t) || 0));
+  if (!hits.length) return {};
+  if (gran !== 'day') {
+    return { readingsNote: `${hits.length} individual blood pressure reading(s) fall in this range. They are attached at day granularity: pass granularity:"day" with a narrower range to see them.` };
+  }
+  const kept = hits.slice(-READINGS_CAP);
+  return {
+    readings: kept.map((r) => ({
+      t: r.t, systolic: r.systolic ?? null, diastolic: r.diastolic ?? null,
+      source: r.source ?? null, manual: r.manual === true,
+    })),
+    ...(hits.length > kept.length && {
+      readingsOmitted: hits.length - kept.length,
+      readingsNote: `${hits.length} readings in range; the ${kept.length} most recent are listed and ${hits.length - kept.length} older ones are omitted. Narrow start/end to see them.`,
+    }),
+  };
+}
+
 export async function getHealthMetrics({ metric, start, end, aggregation, granularity, limit, filterDays, _excludeDays } = {}) {
   assertUnlocked();
   // The tool schema declares an enum and nothing enforced it, so `aggregation:"median"` fell through
@@ -982,7 +1309,7 @@ export async function getHealthMetrics({ metric, start, end, aggregation, granul
     filterNegate = !!filterDays.negate;
     filterSet = ev.matchingEventDaySet({ eventType: filterDays.eventType, eventTag: filterDays.eventTag });
     if (filterSet === null) {
-      throw new Error('filterDays needs health-events.json, which is not present in the data dir. Log events in the iOS app (1.5 or later) and export, or drop filterDays.');
+      throw new Error('filterDays needs logged events (health-events.json from the iOS app, or health-events-agent.json from add_event), and neither is present in the data dir. Log events in the iOS app (1.5 or later) and export, log one with add_event, or drop filterDays.');
     }
   }
 
@@ -1039,6 +1366,9 @@ export async function getHealthMetrics({ metric, start, end, aggregation, granul
     if (gran !== 'day') {
       out[name].note = `${points.length} daily values rolled up to ${gran}. Narrow start/end, or pass granularity:"day" with a smaller range, for day-level detail.`;
     }
+    // Individual blood pressure readings (contract 10.4), single-metric day answers only: the
+    // daily mean hides the reading a clinician asks about. Absent file, nothing added.
+    if (metric && BP_READING_METRICS.has(name)) Object.assign(out[name], bpReadings(points, gran));
   }
 
   // Segment honesty (contract section 8), single-metric calls only: when point events sit inside
@@ -1208,7 +1538,7 @@ export async function comparePeriods({ metric, periodA, periodB, anchor, exclude
     }
     const found = ev.findEvent(String(anchor.eventId));
     if (!found.available) {
-      throw new Error('anchor needs health-events.json, which is not present in the data dir. Log events in the iOS app (1.5 or later) and export first.');
+      throw new Error('anchor needs logged events (health-events.json from the iOS app, or health-events-agent.json from add_event), and neither is present in the data dir. Log the event in the iOS app (1.5 or later) and export, or log it with add_event, first.');
     }
     if (!found.event) {
       throw new Error(`unknown eventId "${anchor.eventId}". Use list_events to see logged events and their ids.`);
@@ -1218,7 +1548,7 @@ export async function comparePeriods({ metric, periodA, periodB, anchor, exclude
     periodB = { start: ev.addDays(e.date, 1), end: ev.addDays(e.date, days) };
     anchorInfo = {
       eventId: e.id, date: e.date, ...(e.endDate && { endDate: e.endDate }),
-      type: e.type ?? null, title: e.title ?? null, days,
+      type: e.type ?? null, title: e.title ?? null, source: e.source, days,
       note: `periodA is the ${days} day(s) before the event, periodB the ${days} day(s) after. The event day itself (${e.date}) is excluded from both sides.`,
     };
   }

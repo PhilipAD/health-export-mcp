@@ -1,7 +1,7 @@
 {
   "identifier": "philipad-health-export-mcp",
   "name": "health-export-mcp",
-  "version": "1.7.3",
+  "version": "1.8.0",
   "author": "Philip D'Souza",
   "authorUrl": "https://github.com/PhilipAD",
   "category": "health-wellness",
@@ -31,7 +31,7 @@
     },
     {
       "name": "get_freshness",
-      "description": "How current the exported files are, so you can decide whether to trust what you read or ask the user to refresh. Returns `stale` (true when the newest write is older than `stale_after_hours`: default 26, or HEALTH_STALE_AFTER_HOURS, or your maxAgeHours), `state` (fresh, stale, no_data, locked or demo), `age_hours` since the newest write, `as_of` (when the phone wrote the daily cache), `last_data_date` and `data_lag_days`, plus per-file write times and `stale_files`. Same rule as the `status --max-age` cron gate. Cheap: call it again before a long analysis.",
+      "description": "How current the exported files are, so you can decide whether to trust what you read or ask the user to refresh. `stale` is judged on the core files (the daily cache and health-sessions.json), never on the hourly intraday file. `state` is fresh, stale, stale_copy, no_data, locked or demo; stale_copy means the phone's manifest or iCloud says the phone wrote a newer version of a core file than this machine holds (`stale_copy` lists the files). Also `age_hours`, `as_of`, `last_data_date`, `data_lag_days`, per-file write times and `stale_files`. Same rule as the `status --max-age` cron gate. Cheap: call it again before a long analysis.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -176,7 +176,7 @@
     },
     {
       "name": "get_intraday",
-      "description": "The current hour-by-hour window from the iOS app's hourly automations (health-intraday.json, app 1.4+): hourly points plus latest value per metric. Replaced on every run, a live within-day view, not history.",
+      "description": "The hour-by-hour window from the iOS app's hourly automations (health-intraday.json, app 1.4+): hourly points plus latest value per metric, covering yesterday 00:00 to now, with the hour's Min and Max for discrete metrics when the app version writes them. Replaced on every run, a live recent view, not history.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -205,7 +205,7 @@
     },
     {
       "name": "list_events",
-      "description": "Logged context events from health-events.json: medication starts, habit changes, doctor visits, life events, shift blocks, episodes, travel. Optional type/tag/date filters; sorted ascending. Absence of the file means nothing was exported, not that nothing happened.",
+      "description": "Logged context events: medication starts, habit changes, doctor visits, life events, shift blocks, episodes, travel. Merges the app's health-events.json with health-events-agent.json (add_event); each event carries source app or agent. Optional type/tag/date filters; sorted ascending. Absence of both files means nothing was logged, not that nothing happened.",
       "inputSchema": {
         "type": "object",
         "properties": {
@@ -226,6 +226,73 @@
             "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
           }
         }
+      }
+    },
+    {
+      "name": "add_event",
+      "description": "Log a context event the user states (a medication start, a habit change, a visit, a trip) so later analysis can segment around it. Writes only health-events-agent.json in the export folder, never Apple Health and never a file the iOS app writes. Idempotent: the same clientEventId (or the same date, type, title and endDate) returns the event already logged.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "date": {
+            "type": "string",
+            "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+          },
+          "type": {
+            "type": "string",
+            "enum": [
+              "medication",
+              "habit",
+              "visit",
+              "life",
+              "shift",
+              "episode",
+              "travel",
+              "other"
+            ]
+          },
+          "title": {
+            "type": "string",
+            "description": "Short description, at most 200 characters."
+          },
+          "endDate": {
+            "type": "string",
+            "description": "A calendar date in YYYY-MM-DD format (e.g. 2026-03-14)."
+          },
+          "note": {
+            "type": "string"
+          },
+          "tags": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "clientEventId": {
+            "type": "string",
+            "description": "Optional idempotency key."
+          }
+        },
+        "required": [
+          "date",
+          "type",
+          "title"
+        ]
+      }
+    },
+    {
+      "name": "remove_event",
+      "description": "Remove an event logged with add_event (id starting agent-). Events logged in the iOS app are refused; they are edited in the app.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          }
+        },
+        "required": [
+          "id"
+        ]
       }
     },
     {
@@ -267,7 +334,7 @@
     },
     {
       "name": "get_sleep_sessions",
-      "description": "Clustered sleep sessions from health-sessions.json, attributed to the WAKING day. Split nights are multiple sessions with the same day, returned as-is.",
+      "description": "Clustered sleep sessions from health-sessions.json, attributed to the WAKING day. Split nights are separate sessions with the same day; duplicate copies of one night (same end, or inside a longer session) are collapsed and counted in collapsedDuplicates.",
       "inputSchema": {
         "type": "object",
         "properties": {

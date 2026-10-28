@@ -286,3 +286,127 @@ Reader surfaces (MCP server, `mcp/healthstore.mjs`):
 - `get_mcp_status`: `recompute: {supported, capDays, recomputed_at, lastRebuiltDays,
   backfilled_days, metricsWithRebuiltDays, capped[], cappedNote}`.
 - Notes are plain mechanics (no judgement about the values, no dashes).
+
+## 10. Export integrity and the long-term-user report (2026-10-27, additive)
+
+A user two months into daily use (ring + running watch, iCloud folder read by the MCP server on a
+Mac) reported, with dates, six failures. Every one was reproduced before this section was written;
+the reproductions are the app's export-integrity tests and the server's
+`test/export-integrity.test.mjs`. All changes are additive: no existing field changes meaning, and a
+reader that ignores the new files behaves exactly as before.
+
+### 10.1 `.health-manifest.json` (NEW, hidden): what the phone last wrote
+
+Written by the app LAST in every run that writes any data file, after those files are on disk, so
+a reader whose iCloud copy lags behind can tell. One entry per file the app has ever written to
+this destination; a run updates only the entries for the files it wrote.
+
+```json
+{
+  "schema": 1,
+  "app": "1.20",
+  "generation": 1834,
+  "writtenAt": "2026-10-27T11:02:13Z",
+  "files": {
+    ".health-cache.json":   { "writtenAt": "2026-10-27T11:02:12Z", "bytes": 2210443, "sha256": "<hex of the bytes on disk>" },
+    "health-sessions.json": { "writtenAt": "2026-10-27T11:02:12Z", "bytes": 48211,   "sha256": "<hex>" }
+  },
+  "lastNight": { "day": "2026-10-27", "end": "2026-10-27T06:40:00-05:00" }
+}
+```
+
+- `generation` increases by one per run on this device; `sha256` hashes the bytes exactly as
+  written (sealed bytes when encryption is on), so the reader never needs the passphrase.
+- `lastNight` is the newest session in `health-sessions.json` as written, or `null`.
+- Reader rule (server `get_freshness` / `get_mcp_status`): for each listed file present locally,
+  a size or hash mismatch means **this machine has an older copy than the phone wrote** (a lagging
+  iCloud download), unless the local file is NEWER than the manifest entry (then the manifest is
+  the one lagging). Freshness is judged on the core files (`.health-cache.json`,
+  `health-sessions.json`), never on the newest of all files: the hourly intraday file used to make
+  a day-old cache read as fresh.
+- On macOS the server may also read iCloud's own per-file status (`downloaded` = a local copy
+  exists but is not the latest the Mac knows of; `not_downloaded`; `current`). Advisory only.
+
+### 10.2 `health-events-agent.json` (NEW, visible): events an agent logged
+
+The app owns `health-events.json` and replaces it whole (section 1). Events an agent logs from the
+Mac go to this SEPARATE file, written only by the MCP server (`add_event` / `remove_event`), so the
+two writers never touch the same iCloud file (iCloud resolves conflicts per file, not per record).
+
+```json
+{
+  "schema": 1,
+  "writer": "health-export-mcp",
+  "writtenAt": "2026-10-27T14:00:00Z",
+  "events": [
+    { "id": "agent-6f1c…", "date": "2026-08-24", "type": "medication", "title": "Started magnesium",
+      "note": "optional", "tags": ["magnesium"], "endDate": "optional", "createdAt": "2026-10-27T14:00:00Z",
+      "clientEventId": "optional idempotency key" }
+  ]
+}
+```
+
+- Same event shape as section 1; ids start with `agent-`. Removal deletes the entry (the file is
+  small and has one writer). Sealed with the destination passphrase when the server has one and
+  the destination is encrypted.
+- Readers merge both files (`list_events`, `compare_periods` anchors) and label each event
+  `source: "app" | "agent"`. The app shows agent events read-only and removes this file in
+  "Delete all exports".
+
+### 10.3 Intraday: a 48-hour window, and the hour's range (changes section 7's intraday file)
+
+- `health-intraday.json` now covers **yesterday 00:00 local to now** (it was today only), still
+  replaced whole each run, so the morning report can read last night's hours.
+- Discrete quantity metrics (heart rate, SpO2, respiratory rate, HRV, resting HR) carry the hour's
+  `Min` and `Max` beside `qty` (the hour's mean), from HealthKit `.discreteMin/.discreteMax`.
+  Cumulative metrics are unchanged. The server passes both through as `Min` / `Max`.
+
+### 10.4 `health-readings.json` (NEW, visible): individual readings
+
+Daily values hide the reading a clinician asks about. Blood pressure is exported per reading, from
+`HKCorrelationType(.bloodPressure)` (systolic and diastolic paired by the correlation):
+
+```json
+{
+  "schema": 1,
+  "writtenAt": "2026-10-27T11:02:12Z",
+  "bloodPressure": [
+    { "id": "<correlation UUID>", "t": "2026-10-26T08:05:00-05:00", "day": "2026-10-26",
+      "systolic": 128, "diastolic": 82, "unit": "mmHg", "source": "Omron Connect", "manual": false }
+  ]
+}
+```
+
+- Accumulates by `id`; a re-read window is authoritative for the readings inside it (a reading
+  deleted in Health disappears on the next run that covers its day).
+- The daily `blood_pressure_systolic` / `_diastolic` averages stay as they were. The server's
+  `get_health_metrics` adds `readings` for those two metrics at day granularity when present.
+
+### 10.5 Sleep sessions (changes section 3)
+
+- The sessions read starts one day before the window and keeps only sessions that END inside it,
+  so a night is never rebuilt from its post-midnight half (that produced a second row: later
+  start, same end, fewer hours).
+- Merging replaces any existing session that overlaps an incoming one (not only an exact start
+  match), so a re-read never stores a night twice.
+- A manually entered `inBed` sample (`HKWasUserEntered`) with no overlapping asleep sample from any
+  source counts as asleep, flagged `"manualInBed": true` (the Health app's Add Data sheet saves
+  "In Bed" as `inBed`).
+- Days rebuilt by the late-arrival recompute (section 9) for `sleep_analysis` also re-read their
+  sessions, so a nap added later in Health reaches the file.
+- Server: sessions already in old files that share an end time and are contained in another
+  session are collapsed on read (the longer one wins), reported as `collapsedDuplicates`.
+
+### 10.6 History protection (no file format change)
+
+The app never lets a routine run replace accumulated history with its short read window: an absent
+hidden cache is rebuilt from `health-export.json` (same metrics) or `.health-cache.prev.json` (a
+one-generation, at most daily, backup of the cache, sealed like it) before merging, and a write that
+would drop most of the metrics or years of span recorded by the last successful write is refused
+while any history file is still on disk. `.health-cache.prev.json` holds health data: it follows the
+encryption setting and "Delete all exports" removes it.
+
+### 10.7 Recompute status wording (server)
+
+A cache without `_meta` (hand-edited, or written by an older app) reports
+`recompute.supported: null` with a reason, instead of `false` ("not supported").

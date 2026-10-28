@@ -2,9 +2,9 @@
   "manifest_version": "0.3",
   "name": "health-export-ai",
   "display_name": "MetricBridge",
-  "version": "1.7.3",
+  "version": "1.8.0",
   "description": "Query your Apple Health data, exported by the MetricBridge iOS app to iCloud Drive, from any MCP agent. Local-first, read-only, zero dependencies.",
-  "long_description": "A zero-dependency MCP server that exposes 194 Apple Health metrics (exported by the MetricBridge iOS app into an iCloud Drive folder) to any MCP-compatible agent: Claude Desktop, opencode, Cursor, OpenClaw, Hermes. No bridge, no Docker, no HTTP receiver: the server reads the synced cache file directly over stdio. 16 tools: get_mcp_status, get_freshness, list_metrics, get_health_metrics, get_trends, compare_periods, get_structured_export, get_intraday, query_health_data, list_events, get_profile, get_workouts, get_sleep_sessions, get_cycle_context, correlate_metrics, resolve_metric. Plus 22 MCP prompts and a --demo mode with a synthetic dataset. Get the companion iOS app on the App Store: https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8&ppid=2c28f88a-d94f-48f9-8e6a-74a8d89ce66e",
+  "long_description": "A zero-dependency MCP server that exposes 194 Apple Health metrics (exported by the MetricBridge iOS app into an iCloud Drive folder) to any MCP-compatible agent: Claude Desktop, opencode, Cursor, OpenClaw, Hermes. No bridge, no Docker, no HTTP receiver: the server reads the synced cache file directly over stdio. 18 tools: get_mcp_status, get_freshness, list_metrics, get_health_metrics, get_trends, compare_periods, get_structured_export, get_intraday, query_health_data, list_events, add_event, remove_event, get_profile, get_workouts, get_sleep_sessions, get_cycle_context, correlate_metrics, resolve_metric. Every tool is read-only except add_event and remove_event, which write only health-events-agent.json in the export folder (never Apple Health, never a file the app writes). Plus 22 MCP prompts and a --demo mode with a synthetic dataset. Get the companion iOS app on the App Store: https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8&ppid=2c28f88a-d94f-48f9-8e6a-74a8d89ce66e",
   "author": {
     "name": "PhilipAD",
     "url": "https://github.com/PhilipAD"
@@ -45,7 +45,7 @@
     },
     {
       "name": "get_freshness",
-      "description": "How current the export is: stale flag against a documented threshold (default 26 hours), age since the newest write, as_of, last data date, per-file write times."
+      "description": "How current the export is: stale flag judged on the core files (daily cache, sleep sessions) against a documented threshold (default 26 hours), a stale_copy state when this machine holds an older copy than the phone last wrote, age, as_of, last data date, per-file write times."
     },
     {
       "name": "list_metrics",
@@ -69,7 +69,7 @@
     },
     {
       "name": "get_intraday",
-      "description": "Today's hour-by-hour window from the app's hourly automations (health-intraday.json, app 1.4+). Replaced on every run: a live within-day view, not history."
+      "description": "The hour-by-hour window from the app's hourly automations (health-intraday.json, app 1.4+): yesterday and today, with the hour's Min and Max for discrete metrics when the app writes them. Replaced on every run: a live recent view, not history."
     },
     {
       "name": "query_health_data",
@@ -77,7 +77,15 @@
     },
     {
       "name": "list_events",
-      "description": "Logged context events (medication, habit, visit, life, shift, episode, travel) with type/tag/date filters."
+      "description": "Logged context events (medication, habit, visit, life, shift, episode, travel) from the app and from add_event, each labelled source app or agent, with type/tag/date filters."
+    },
+    {
+      "name": "add_event",
+      "description": "Log a context event the user states (medication start, habit change, visit, trip) into health-events-agent.json; idempotent by clientEventId. The only file this server writes."
+    },
+    {
+      "name": "remove_event",
+      "description": "Remove an event logged with add_event (id starting agent-); events logged in the iOS app are edited there."
     },
     {
       "name": "get_profile",
@@ -89,7 +97,7 @@
     },
     {
       "name": "get_sleep_sessions",
-      "description": "Clustered sleep sessions attributed to the waking day; split nights returned as-is."
+      "description": "Clustered sleep sessions attributed to the waking day; split nights returned as separate sessions, duplicate copies of one night collapsed (collapsedDuplicates)."
     },
     {
       "name": "get_cycle_context",
