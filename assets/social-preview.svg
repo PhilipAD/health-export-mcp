@@ -22,7 +22,7 @@
   <g transform="translate(0,320)">
     <!-- MCP pill -->
     <g transform="translate(80,70)">
-      <rect x="0" y="0" width="300" height="42" rx="21" fill="#1A2148" stroke="#2E376E" stroke-width="1.5"/>
+      <rect x="0" y="0" width="322" height="42" rx="21" fill="#1A2148" stroke="#2E376E" stroke-width="1.5"/>
       <circle cx="27" cy="21" r="7" fill="#7C5CFF"/>
       <text x="48" y="27" fill="#C9CEF0" font-size="16" font-weight="600" letter-spacing="0.5">Model Context Protocol server</text>
     </g>
@@ -32,14 +32,14 @@
     <text x="82" y="276" fill="#A9B0E0" font-size="34" font-weight="500">Apple Health <tspan fill="#7C5CFF" font-weight="700">&#8594;</tspan> your AI agent, over MCP</text>
 
     <!-- description -->
-    <text x="82" y="330" fill="#7C7FA6" font-size="23">194 Apple Health metrics as clean JSON. Read-only, local-first.</text>
+    <text x="82" y="330" fill="#7C7FA6" font-size="23">194 Apple Health metrics as clean JSON. Local-first; no tool writes to Apple Health.</text>
 
     <!-- chips -->
     <g font-size="20" font-weight="700">
       <g transform="translate(80,372)"><rect width="172" height="48" rx="12" fill="#161D3F" stroke="#2A3160" stroke-width="1.5"/><text x="86" y="31" text-anchor="middle" fill="#EDEFFA">194 metrics</text></g>
-      <g transform="translate(268,372)"><rect width="174" height="48" rx="12" fill="#161D3F" stroke="#2A3160" stroke-width="1.5"/><text x="87" y="31" text-anchor="middle" fill="#EDEFFA">16 MCP tools</text></g>
+      <g transform="translate(268,372)"><rect width="174" height="48" rx="12" fill="#161D3F" stroke="#2A3160" stroke-width="1.5"/><text x="87" y="31" text-anchor="middle" fill="#EDEFFA">18 MCP tools</text></g>
       <g transform="translate(458,372)"><rect width="224" height="48" rx="12" fill="#161D3F" stroke="#2A3160" stroke-width="1.5"/><text x="112" y="31" text-anchor="middle" fill="#EDEFFA">zero-dependency</text></g>
-      <g transform="translate(698,372)"><rect width="156" height="48" rx="12" fill="#161D3F" stroke="#2A3160" stroke-width="1.5"/><text x="78" y="31" text-anchor="middle" fill="#EDEFFA">read-only</text></g>
+      <g transform="translate(698,372)"><rect width="156" height="48" rx="12" fill="#161D3F" stroke="#2A3160" stroke-width="1.5"/><text x="78" y="31" text-anchor="middle" fill="#EDEFFA">local-first</text></g>
     </g>
 
     <!-- works with -->
