@@ -2,9 +2,9 @@
   "manifest_version": "0.3",
   "name": "health-export-ai",
   "display_name": "MetricBridge",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Query your Apple Health data, exported by the MetricBridge iOS app to iCloud Drive, from any MCP agent. Local-first, read-only, zero dependencies.",
-  "long_description": "A zero-dependency MCP server that exposes 194 Apple Health metrics (exported by the MetricBridge iOS app into an iCloud Drive folder) to any MCP-compatible agent: Claude Desktop, opencode, Cursor, OpenClaw, Hermes. No bridge, no Docker, no HTTP receiver: the server reads the synced cache file directly over stdio. 18 tools: get_mcp_status, get_freshness, list_metrics, get_health_metrics, get_trends, compare_periods, get_structured_export, get_intraday, query_health_data, list_events, add_event, remove_event, get_profile, get_workouts, get_sleep_sessions, get_cycle_context, correlate_metrics, resolve_metric. Every tool is read-only except add_event and remove_event, which write only health-events-agent.json in the export folder (never Apple Health, never a file the app writes). Plus 22 MCP prompts and a --demo mode with a synthetic dataset. Get the companion iOS app on the App Store: https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8&ppid=2c28f88a-d94f-48f9-8e6a-74a8d89ce66e",
+  "long_description": "A zero-dependency MCP server that exposes 194 Apple Health metrics (exported by the MetricBridge iOS app into an iCloud Drive folder) to any MCP-compatible agent: Claude Desktop, opencode, Cursor, OpenClaw, Hermes. No bridge, no Docker, no HTTP receiver: the server reads the synced cache file directly over stdio. 21 tools: get_mcp_status, get_freshness, list_metrics, get_health_metrics, get_trends, compare_periods, get_structured_export, get_intraday, query_health_data, list_events, add_event, remove_event, get_profile, get_check_ins, get_workouts, get_sleep_sessions, get_strength_log, get_cycle_context, list_tags, correlate_metrics, resolve_metric. Every tool is read-only except add_event and remove_event, which write only health-events-agent.json in the export folder (never Apple Health, never a file the app writes). Plus 23 MCP prompts and a --demo mode with a synthetic dataset. Get the companion iOS app on the App Store: https://apps.apple.com/app/apple-store/id6784185201?pt=129083290&ct=githubreadme&mt=8&ppid=2c28f88a-d94f-48f9-8e6a-74a8d89ce66e",
   "author": {
     "name": "PhilipAD",
     "url": "https://github.com/PhilipAD"
@@ -92,6 +92,10 @@
       "description": "Opted-in context fields (conditions, medications, goals). Absent fields were withheld, never \"none\"."
     },
     {
+      "name": "get_check_ins",
+      "description": "Morning check-ins the user opted to share: self-rated feeling 1 to 5, note, intention and whether it happened."
+    },
+    {
       "name": "get_workouts",
       "description": "Query workouts by activity/date with pagination; includes heart rate, running dynamics and intervals when exported."
     },
@@ -100,8 +104,16 @@
       "description": "Clustered sleep sessions attributed to the waking day; split nights returned as separate sessions, duplicate copies of one night collapsed (collapsedDuplicates)."
     },
     {
+      "name": "get_strength_log",
+      "description": "The strength log typed into the app (health-strength.json, opt-in): sessions with every set, volume, Epley estimates, per-exercise records and saved routines, filtered by exercise and date."
+    },
+    {
       "name": "get_cycle_context",
       "description": "Day-in-cycle and coarse phase derived from logged period starts. Never predictive."
+    },
+    {
+      "name": "list_tags",
+      "description": "Tags logged in the iOS app (opt-in export): lifestyle tags and supplements by name only, filtered by kind and dates."
     },
     {
       "name": "correlate_metrics",

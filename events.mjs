@@ -8,6 +8,7 @@
 //   health-sessions.json  clustered sleep sessions, attributed to the WAKING day
 //   health-cycles.json    user-logged menstrual cycle starts (observed only, never predictive)
 //   health-days.json      the timezone change log (the travel-day source)
+//   health-strength.json  the strength log typed into the app: sessions, sets, records (opt-in, contract section 14)
 //
 // Every file is OPTIONAL. An absent file answers {available:false, note}, never "no data": a
 // consumer must never read a missing file as "nothing happened". All reads share healthstore's
@@ -40,6 +41,11 @@ const PROFILE_FILE = 'health-profile.json';
 const SESSIONS_FILE = 'health-sessions.json';
 const CYCLES_FILE = 'health-cycles.json';
 const DAYS_FILE = 'health-days.json';
+export const STRENGTH_FILE = 'health-strength.json';
+// The iOS app's tag log (contract section 15). Opt-in in the app ("Include tags in exports"), so
+// absence is the default state, not a sign that nothing was tagged.
+export const TAGS_FILE = 'health-tags.json';
+const CHECK_INS_FILE = 'health-check-ins.json';
 
 // YYYY-MM-DD day arithmetic without timezones: date-only strings parse as UTC midnight, so adding
 // whole days can never cross a DST boundary.
@@ -93,16 +99,35 @@ function loadProfileFile() {
   return raw && raw.fields && typeof raw.fields === 'object' ? raw : null;
 }
 
+function loadCheckInsFile() {
+  if (DEMO) return null;
+  const raw = readJSONCached(dataPath(CHECK_INS_FILE), null);
+  return raw && Array.isArray(raw.checkIns) ? raw : null;
+}
+
 function loadSessionsFile() {
   if (DEMO) return demoData().sessions;
   const raw = readJSONCached(dataPath(SESSIONS_FILE), null);
   return raw && Array.isArray(raw.sessions) ? raw : null;
 }
 
+/** The parsed tags file, or null when absent/corrupt. */
+export function loadTagsFile() {
+  if (DEMO) return demoData().tags;
+  const raw = readJSONCached(dataPath(TAGS_FILE), null);
+  return raw && raw.days && typeof raw.days === 'object' && !Array.isArray(raw.days) ? raw : null;
+}
+
 function loadCyclesFile() {
   if (DEMO) return demoData().cycles;
   const raw = readJSONCached(dataPath(CYCLES_FILE), null);
   return raw && Array.isArray(raw.cycleStarts) ? raw : null;
+}
+
+export function loadStrengthFile() {
+  if (DEMO) return demoData().strength;
+  const raw = readJSONCached(dataPath(STRENGTH_FILE), null);
+  return raw && Array.isArray(raw.sessions) ? raw : null;
 }
 
 // ---- derived helpers shared with healthstore's segment honesty -------------
@@ -204,6 +229,57 @@ export async function listEvents({ type, tag, start, end } = {}) {
     sourceNote: 'source "app" events were logged in the MetricBridge iOS app (edit them there); source "agent" events were logged with add_event and can be removed with remove_event.',
     ...(events.length === 0 && {
       note: 'No events matched. The file is present; nothing matching this filter has been logged.',
+    }),
+  };
+}
+
+// ---- tags (health-tags.json, contract section 15) -------------------------------------------
+
+export const TAG_KINDS = ['all', 'supplement', 'lifestyle'];
+const TAGS_BASIS = 'Tags are names the user logged on a day in the iOS app (supplements by name only, never an amount). They describe what happened, not why: any difference in a metric after tagged days is an association in this person\'s own data, not evidence that a tag, or a supplement, has an effect.';
+
+/** Tags the user logged, per tag (kind, days logged, first and last day) and per day, with
+ *  optional {kind, start, end} filters. Read-only. */
+export async function listTags({ kind = 'all', start, end } = {}) {
+  assertUnlocked();
+  start = assertDay(start, 'start');
+  end = assertDay(end, 'end');
+  if (start && end && start > end) throw new Error(`start (${start}) is after end (${end})`);
+  if (!TAG_KINDS.includes(kind)) throw new Error(`kind must be one of ${TAG_KINDS.join(', ')}, not "${kind}"`);
+  const file = loadTagsFile();
+  if (!file) {
+    return {
+      ...absent(TAGS_FILE, 'Tags appear when the user turns on "Include tags in exports" in the iOS app (Tags & patterns). It is off by default.'),
+      basis: TAGS_BASIS,
+    };
+  }
+  const supplements = new Set(Array.isArray(file.supplements) ? file.supplements.filter((n) => typeof n === 'string') : []);
+  const wanted = (name) => kind === 'all' || (kind === 'supplement') === supplements.has(name);
+  const days = {};
+  const perTag = new Map();
+  for (const day of Object.keys(file.days).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)).sort()) {
+    if ((start && day < start) || (end && day > end)) continue;
+    const names = (Array.isArray(file.days[day]) ? file.days[day] : [])
+      .filter((n) => typeof n === 'string' && n && wanted(n));
+    if (!names.length) continue;
+    days[day] = [...new Set(names)].sort();
+    for (const name of days[day]) {
+      const t = perTag.get(name) ?? { name, kind: supplements.has(name) ? 'supplement' : 'lifestyle', days: 0, firstDay: day, lastDay: day };
+      t.days += 1;
+      t.lastDay = day;
+      perTag.set(name, t);
+    }
+  }
+  const tags = [...perTag.values()].sort((a, b) => b.days - a.days || a.name.localeCompare(b.name));
+  return {
+    available: true,
+    kind,
+    count: tags.length,
+    tags,
+    days,
+    basis: TAGS_BASIS,
+    ...(tags.length === 0 && {
+      note: 'No tags matched. The file is present; nothing matching this filter was logged.',
     }),
   };
 }
@@ -413,6 +489,40 @@ export async function getProfile() {
   };
 }
 
+const CHECK_IN_NOTE =
+  'Each feeling is a self-rating of how the person said they felt that morning, 1 (rough) to 5 (great). It is their own words, not a measurement; report it as "you rated", never as a health finding. A morning with no row was not answered, which says nothing about how it went. intentionMet answers that day\'s own intention the next morning.';
+
+/** Morning check-ins the user chose to share (health-check-ins.json, opt-in in the iOS app). */
+export async function getCheckIns({ start, end } = {}) {
+  assertUnlocked();
+  start = assertDay(start, 'start');
+  end = assertDay(end, 'end');
+  if (start && end && start > end) throw new Error(`start (${start}) is after end (${end})`);
+  const file = loadCheckInsFile();
+  if (!file) {
+    return absent(CHECK_INS_FILE, 'Check-ins appear only when the user switches on "Include check-ins in exports" in the iOS app (1.21 or later); it is off by default. ' + CHECK_IN_NOTE);
+  }
+  let rows = file.checkIns.filter((r) => r && typeof r.date === 'string');
+  if (start) rows = rows.filter((r) => r.date >= start);
+  if (end) rows = rows.filter((r) => r.date <= end);
+  rows.sort((a, b) => a.date.localeCompare(b.date));
+  const rated = rows.map((r) => r.feeling).filter((f) => Number.isInteger(f) && f >= 1 && f <= 5);
+  const answeredIntentions = rows.filter((r) => typeof r.intention === 'string' && typeof r.intentionMet === 'boolean');
+  return {
+    available: true,
+    count: rows.length,
+    summary: {
+      rated: rated.length,
+      averageFeeling: rated.length ? Math.round((rated.reduce((a, b) => a + b, 0) / rated.length) * 10) / 10 : null,
+      intentionsAnswered: answeredIntentions.length,
+      intentionsMet: answeredIntentions.filter((r) => r.intentionMet).length,
+    },
+    checkIns: rows,
+    writtenAt: file.generatedAt ?? null,
+    note: CHECK_IN_NOTE,
+  };
+}
+
 export async function getSleepSessions({ start, end, day } = {}) {
   assertUnlocked();
   start = assertDay(start, 'start');
@@ -468,6 +578,88 @@ function collapseDuplicateSessions(sessions) {
     kept.push(...survivors.map((x) => x.s));
   }
   return { kept, collapsed };
+}
+
+// ---- strength log (health-strength.json, contract section 14) --------------
+
+// Newest sessions kept when a range holds more: a year of four sessions a week with every set is
+// past the response budget, and the recent end is what a progression question is about.
+const STRENGTH_MAX_SESSIONS = 150;
+const STRENGTH_NOTE = 'Logged by hand in the MetricBridge app, never read from Apple Health. Load is in kilograms; a set without kg is bodyweight with nothing added. Warm-up sets (kind "warmup") are listed but left out of volumeKg, workingSets and every estimate. bestEstimateKg is the Epley estimate, load x (1 + reps / 30), from working sets of 10 reps or fewer: an estimate, never a load to attempt. An exercise name is the user\'s own text or the app\'s English preset name. workoutId, when present, is the id of the Apple Health workout the session was logged against (see get_workouts). Sessions are attributed to the local day they were logged for.';
+
+const sameName = (a, b) => typeof a === 'string' && a.trim().toLocaleLowerCase('en') === b;
+
+export async function getStrengthLog({ exercise, start, end } = {}) {
+  assertUnlocked();
+  start = assertDay(start, 'start');
+  end = assertDay(end, 'end');
+  if (start && end && start > end) throw new Error(`start (${start}) is after end (${end})`);
+  if (exercise !== undefined && exercise !== null && typeof exercise !== 'string') {
+    throw new Error('exercise must be a string, e.g. "Back squat"');
+  }
+  const wanted = exercise?.trim() ? exercise.trim().toLocaleLowerCase('en') : null;
+  const file = loadStrengthFile();
+  if (!file) {
+    return absent(STRENGTH_FILE, 'The strength log appears when the user switches on Training > Include in exports in the iOS app and exports to iCloud Drive or a folder. It is off by default.');
+  }
+  const all = file.sessions.filter((s) => s && typeof s.day === 'string' && Array.isArray(s.exercises));
+  let sessions = all;
+  if (start) sessions = sessions.filter((s) => s.day >= start);
+  if (end) sessions = sessions.filter((s) => s.day <= end);
+  if (wanted) {
+    sessions = sessions
+      .map((s) => ({ ...s, exercises: s.exercises.filter((e) => sameName(e?.name, wanted)) }))
+      .filter((s) => s.exercises.length > 0);
+  }
+  sessions = [...sessions].sort((a, b) => a.day.localeCompare(b.day) || String(a.start).localeCompare(String(b.start)));
+  // Exercise counts over the whole matched range, so an agent sees what was trained without
+  // reading every set (and even when older sessions are omitted below).
+  const counts = new Map();
+  for (const s of sessions) for (const name of new Set(s.exercises.map((e) => e?.name))) {
+    if (typeof name === 'string') counts.set(name, (counts.get(name) ?? 0) + 1);
+  }
+  const matched = sessions.length;
+  const omitted = Math.max(0, matched - STRENGTH_MAX_SESSIONS);
+  if (omitted) sessions = sessions.slice(omitted);
+  const records = (Array.isArray(file.records) ? file.records : [])
+    .filter((r) => r && (!wanted || sameName(r.exercise, wanted)));
+  const allRoutines = (Array.isArray(file.routines) ? file.routines : []).filter((r) => r && Array.isArray(r.exercises));
+  const routines = allRoutines.filter((r) => !wanted || r.exercises.some((e) => sameName(e?.name, wanted)));
+  // Every name the user has used: in a logged session or only in a saved routine (planned, not yet done).
+  const knownExercises = [...new Set([...all, ...allRoutines].flatMap((s) => s.exercises.map((e) => e?.name))
+    .filter((n) => typeof n === 'string'))].sort();
+  const out = {
+    available: true,
+    unit: file.unit ?? 'kg',
+    ...(file.formula && { formula: file.formula }),
+    writtenAt: file.writtenAt ?? null,
+    count: matched,
+    ...(omitted > 0 && {
+      sessionsOmitted: omitted,
+      omittedNote: `${matched} sessions match; the ${sessions.length} most recent are listed and ${omitted} older ones are omitted. Narrow start/end to see them.`,
+    }),
+    exercises: [...counts].map(([name, n]) => ({ name, sessions: n }))
+      .sort((a, b) => b.sessions - a.sessions || a.name.localeCompare(b.name)),
+    sessions,
+    records,
+    recordsNote: 'records are all-time per exercise as the app computed them (best estimate and its day, heaviest working set, sessions, last day), whatever start and end were passed.',
+    // The user's saved routines (their own plans, in their order), never filtered by date; with an
+    // exercise filter, only the routines that include it. Absent from files written before routines.
+    routines,
+    routinesNote: 'routines are templates the user saved in the app (name, exercises, planned sets with reps, kind and kg; kg absent for bodyweight). A session started from one carries its routineId. They are the user\'s own plans, not a programme the app recommends.',
+    note: STRENGTH_NOTE,
+  };
+  if (wanted) {
+    out.note += ' With an exercise filter each session lists only that exercise; the session-level volumeKg and workingSets still cover the whole session.';
+  }
+  if (wanted && matched === 0) {
+    out.knownExercises = knownExercises;
+    const planned = routines.length
+      ? ` It is planned in ${routines.length} saved routine${routines.length === 1 ? '' : 's'} (listed in routines) but not logged${start || end ? ' in this range' : ''} yet.`
+      : '';
+    out.note = `No session${start || end ? ' in this range' : ''} includes an exercise named "${exercise.trim()}".${planned} Names match case-insensitively but exactly; knownExercises lists every name in the log and in saved routines. ` + STRENGTH_NOTE;
+  }
+  return out;
 }
 
 // ---- cycle context ---------------------------------------------------------

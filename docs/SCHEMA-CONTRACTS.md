@@ -410,3 +410,139 @@ encryption setting and "Delete all exports" removes it.
 
 A cache without `_meta` (hand-edited, or written by an older app) reports
 `recompute.supported: null` with a reason, instead of `false` ("not supported").
+
+## 14. `health-strength.json` (NEW, visible): the strength log (2026-10-29, #401, additive)
+
+The sets, reps and load the person types into Training > Strength (`StrengthStore`), for agents
+that read the export. **Opt-in, off by default** (`AppSettings.exportsStrengthLog`, Training >
+Include in exports): the log was typed into the app and, before this file, never left it. Written
+into iCloud Drive and the picked folder beside the other context files, sealed when that
+destination is encrypted, excluded from device backup like every other export file, and removed by
+"Delete all exports". Not sent over the local network (that receiver takes the daily summary only)
+or to the webhook.
+
+Whole-file replace, like `health-events.json`: an edit or a delete in the app rewrites the file at
+once, and switching the export off deletes it from every destination.
+
+```json
+{
+  "schema": 1,
+  "app": "1.20",
+  "writtenAt": "2026-10-29T18:00:00Z",
+  "unit": "kg",
+  "formula": "strength-v1",
+  "sessions": [
+    {
+      "id": "8C1F…", "start": "2026-10-28T18:05:00+00:00", "day": "2026-10-28",
+      "minutes": 55, "effort": 7, "workoutId": "optional HealthKit workout UUID", "notes": "optional",
+      "volumeKg": 3765, "workingSets": 9,
+      "exercises": [
+        { "name": "Back squat", "volumeKg": 1275, "bestEstimateKg": 99.2,
+          "sets": [ { "reps": 8, "kg": 40, "kind": "warmup" },
+                    { "reps": 5, "kg": 85, "kind": "working", "rpe": 8 } ] },
+        { "name": "Pull-up", "volumeKg": 0, "sets": [ { "reps": 8, "kind": "working" } ] }
+      ]
+    }
+  ],
+  "records": [
+    { "exercise": "Back squat", "bestEstimateKg": 99.2, "bestEstimateDay": "2026-10-28",
+      "heaviestKg": 85, "sessions": 9, "lastDay": "2026-10-28" }
+  ],
+  "routines": [
+    { "id": "5D2E…", "name": "Squat day", "createdAt": "2026-10-01T09:00:00Z", "lastUsedDay": "2026-10-28",
+      "exercises": [
+        { "name": "Back squat", "sets": [ { "reps": 8, "kg": 40, "kind": "warmup" },
+                                          { "reps": 5, "kg": 85, "kind": "working" } ] },
+        { "name": "Pull-up", "sets": [ { "reps": 8, "kind": "working" } ] }
+      ] }
+  ]
+}
+```
+
+- `sessions` oldest first. `start` is ISO 8601 in the device's time zone at export time, with the
+  offset that zone had on that date (so a summer session keeps its summer offset); `day` is the
+  local day the session was logged for. The logging time zone is not stored, so a session logged
+  while travelling can show a `start` whose date differs from `day`: `day` is the one to group by.
+- Every set is listed as entered. `kg` is absent for a bodyweight set with nothing added (never 0);
+  `rpe` (1 to 10, half steps) is absent unless entered. `kind` is `warmup` or `working`.
+- Derived numbers use the app's own maths (`StrengthMath`, `formula` names its version):
+  `volumeKg` = sum of reps x kg over working sets; `workingSets` counts working sets;
+  `bestEstimateKg` = Epley, kg x (1 + reps / 30), the best over working sets of 1 to 10 reps (a
+  single rep is its own maximum), absent when no set qualifies. An estimate, never a load to attempt.
+- `minutes`, `effort` (session RPE 1 to 10), `workoutId` and `notes` are absent unless entered.
+- `name` is the person's own text or a preset's English key ("Back squat"), never a translation,
+  so one exercise keeps one name whatever the phone's language.
+- `records`: one per exercise with at least one working set, all time, newest `lastDay` first.
+  `heaviestKg` is the heaviest working set; both best fields are absent for bodyweight-only work.
+- `routines` (added 2026-10-29, #401 PR 5, additive; absent in files written before it): the
+  routines the person saved (`RoutineStore`, the app's `routines.json`), in their own order. Each
+  is a template: `name` as typed, `createdAt` (UTC), `lastUsedDay` (the local day a session started
+  from it was last saved, absent until then), and each exercise's planned sets (`reps`, `kind`, `kg`
+  absent for bodyweight). A session started from a routine carries `routineId`; a deleted routine
+  leaves that id pointing at nothing, and its sessions are unchanged. Routines are the person's
+  own plans, never a programme the app writes.
+- Starting a session from a routine (app behaviour, not in the file): each set takes the weight of
+  the set at the same position among sets of the same kind in the most recent session with that
+  exercise, else the routine's weight; reps and set count are the routine's.
+- Server: `get_strength_log {exercise?, start?, end?}` (read-only). `exercise` matches a name
+  exactly, ignoring case; an unknown name returns `count: 0` with `knownExercises`. A missing file
+  answers `available: false`, which means the export is switched off, not that the person does not
+  train. Above 150 matching sessions the newest 150 are returned with `sessionsOmitted`. `routines`
+  come back whole (never date-filtered); with `exercise`, only the routines that include it.
+
+## 15. `health-tags.json` (2026-10-29, #401 PR 8, opt-in, visible filename)
+
+The tag log from the app's Tags & patterns sheet, written only while **Include tags in exports** is
+on (OFF by default; `AppSettings.exportTags`). Whole-file replace from the app's own tag store on
+every context write; switching the setting off removes the file from every destination, and
+"Delete all exports" removes it (`ContextFiles.destinationFileNames`). Sealed like every other
+context file when the destination encrypts.
+
+```json
+{
+  "schema": 1,
+  "writtenAt": "2026-10-29T08:00:00Z",
+  "days": { "2026-10-28": ["Creatine", "Sauna"], "2026-10-29": ["Creatine", "Magnesium"] },
+  "supplements": ["Creatine", "Magnesium"]
+}
+```
+
+- `days`: local day to the tag names logged that day, sorted. Names are the stored keys: a preset
+  is its English key whatever the phone's language ("Vitamin D"), a custom tag is as typed.
+- `supplements`: the names in `days` that are supplements (a supplement preset, or a custom tag
+  the person marked as one). Every other name is a lifestyle tag.
+- Names never carry an amount: the app refuses "Vitamin D 1000 IU" and asks for the name alone,
+  and refuses medication-class names (melatonin included). A melatonin tag logged before that rule
+  stays in `days` but is never analysed by Tag patterns.
+- Sensitive tags are left out unless **Include sensitive categories** is on, the switch that
+  gates the alcohol metric: the "Alcohol" preset and any tag naming alcohol, sexual activity or
+  reproductive health (`TagLog.sensitiveWords`). A day left with no tags is left out. Switching
+  sensitive categories off rewrites the file without them.
+- Server: `list_tags {kind: all | supplement | lifestyle, start, end}`; `get_mcp_status`
+  `contextFiles.tags`. Absent is the default state and is reported as such.
+
+## 16. `health-check-ins.json` (NEW, visible): morning check-ins (2026-10-29, #401 item 22, additive, opt-in)
+
+Morning check-ins the person typed in the app. Written only while Settings > Check-in and reminders >
+"Include check-ins in exports" is on (off by default), whole-file replace on every change and every
+export, and DELETED from each destination when the switch goes off. Listed in
+`ContextFiles.destinationFileNames`, so "Delete all exports" removes it too. Sealed like the rest of
+the export when the destination is encrypted. Not sent over the local network or to the webhook.
+
+```json
+{
+  "schema": 1,
+  "scale": "1 = rough, 5 = great (self-rated)",
+  "generatedAt": "2026-10-29T07:41:00Z",
+  "checkIns": [
+    { "date": "2026-10-28", "feeling": 4, "note": "Slept well after the evening walk.",
+      "intention": "Walk at lunch", "intentionMet": true, "answeredAt": "2026-10-28T07:40:12Z" }
+  ]
+}
+```
+
+- `date` is the local morning the check-in belongs to: the day the notification was delivered, even
+  when it is answered after midnight.
+- Every key but `date` is optional. `intentionMet` answers that day's own intention, the next morning.
+- A self-rating, never a measurement: the server's `get_check_ins` says so on every answer, and an
+  absent file reads as "not shared", never "felt nothing".

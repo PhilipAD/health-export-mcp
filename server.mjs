@@ -21,7 +21,7 @@ import * as ev from './events.mjs';
 import { PROMPTS } from './prompts.mjs';
 import { DEMO } from './demo.mjs';
 
-const SERVER = { name: 'health-export-ai', version: '1.8.0' };
+const SERVER = { name: 'health-export-ai', version: '1.9.0' };
 const DEFAULT_PROTOCOL = '2025-06-18';
 const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
 
@@ -229,6 +229,12 @@ const TOOLS = [
     handler: () => ev.getProfile(),
   },
   {
+    name: 'get_check_ins',
+    description: 'Morning check-ins the user chose to share (health-check-ins.json): per day a self-rated feeling (1 rough to 5 great), an optional note, an intention for the day and whether it happened (answered the next morning). Optional {start, end} filters. Returns the rows plus a summary (rated, averageFeeling, intentionsAnswered, intentionsMet). Opt-in in the iOS app and off by default, so available:false is the usual answer and means not shared, never "felt nothing". A self-rating is the person\'s own words, not a measurement.',
+    inputSchema: { type: 'object', properties: { start: DATE, end: DATE }, additionalProperties: false },
+    handler: (a) => ev.getCheckIns(a),
+  },
+  {
     name: 'get_workouts',
     description: 'Query the workouts cache with {activityType (a name like Running, or a raw HealthKit id like 37), start, end} filters and pagination ({limit} default 50 max 200, {cursor} from a previous nextCursor). Records are returned exactly as stored, including the newer optional keys (avgHeartRate, maxHeartRate, running dynamics, cycling power, intervals, hasRoute) when the app exported them; older caches simply lack those keys and nothing is fabricated. Also returns summary {count, byActivityType} over everything that matched.',
     inputSchema: {
@@ -255,6 +261,33 @@ const TOOLS = [
       },
     },
     handler: (a) => ev.getSleepSessions(a),
+  },
+  {
+    name: 'get_strength_log',
+    description: "The strength log the user keeps in the MetricBridge app (health-strength.json, opt-in, off by default): each session with its exercises and every set as entered (reps, kg, warmup or working, RPE), plus volumeKg, workingSets and an Epley bestEstimateKg per exercise, all-time records per exercise, and the routines the user saved (their own templates). Filters: {exercise (exact name, case-insensitive, e.g. \"Back squat\"), start, end (local days, inclusive)}. Sessions come oldest first; above 150 matches the most recent 150 are listed and `sessionsOmitted` counts the rest. An unknown exercise returns count 0 with `knownExercises`. Logged by hand, never read from Apple Health; when the file is missing the answer is available:false, which means the user has not switched the export on, not that they do not train.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        exercise: { type: 'string', description: 'One exercise, by the exact name in the log (case-insensitive), e.g. Back squat. Omit for every exercise.' },
+        start: { ...DATE, description: 'First day (inclusive), YYYY-MM-DD.' },
+        end: { ...DATE, description: 'Last day (inclusive), YYYY-MM-DD.' },
+      },
+    },
+    _meta: BIG_RESULT_META,
+    handler: (a) => ev.getStrengthLog(a),
+  },
+  {
+    name: 'list_tags',
+    description: 'Tags the user logged in the iOS app (health-tags.json): lifestyle tags such as Alcohol or Sauna, and supplements such as Creatine or Magnesium, by name only and never an amount. Optional {kind: all | supplement | lifestyle, start, end}. Returns one row per tag (kind, days logged, firstDay, lastDay, most logged first) and the tag names per day. Tag export is opt-in in the app and off by default, so available:false is the usual answer and means the file was not exported, not that nothing was tagged. Treat any difference after tagged days as an association in this person\'s own data, never as evidence that a supplement works.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: ev.TAG_KINDS, description: "Which tags: 'all' (default), 'supplement' or 'lifestyle'." },
+        start: DATE, end: DATE,
+      },
+      additionalProperties: false,
+    },
+    handler: (a) => ev.listTags(a),
   },
   {
     name: 'get_cycle_context',
@@ -310,7 +343,7 @@ async function handle(msg) {
         protocolVersion: params?.protocolVersion || DEFAULT_PROTOCOL,
         capabilities: { tools: { listChanged: false }, prompts: { listChanged: false } },
         serverInfo: SERVER,
-        instructions: 'Apple Health export bridge. Call get_mcp_status (its `freshness` block says whether the export is stale; get_freshness has the detail), then list_metrics, then the data tools (get_health_metrics, get_trends, compare_periods, get_structured_export, get_workouts, correlate_metrics). The context tools (list_events, get_profile, get_sleep_sessions, get_cycle_context) read optional files: absence is reported explicitly, never read as "no data". add_event and remove_event are the only tools that write, and only health-events-agent.json: log an event only when the user stated it. prompts/list serves ready-made analysis prompts.',
+        instructions: 'Apple Health export bridge. Call get_mcp_status (its `freshness` block says whether the export is stale; get_freshness has the detail), then list_metrics, then the data tools (get_health_metrics, get_trends, compare_periods, get_structured_export, get_workouts, correlate_metrics). The context tools (list_events, get_profile, get_check_ins, get_sleep_sessions, get_strength_log, get_cycle_context, list_tags) read optional files: absence is reported explicitly, never read as "no data". add_event and remove_event are the only tools that write, and only health-events-agent.json: log an event only when the user stated it. prompts/list serves ready-made analysis prompts.',
       });
 
     case 'notifications/initialized':

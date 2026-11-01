@@ -19,8 +19,8 @@ const { TOOLS, SERVER } = await import('./server.mjs');
 
 const DASH = /[–—]/;
 
-test('at least 22 prompts, each with a unique snake_case name, description and text', () => {
-  assert.ok(PROMPTS.length >= 22, `expected >= 22 prompts, got ${PROMPTS.length}`);
+test('at least 23 prompts, each with a unique snake_case name, description and text', () => {
+  assert.ok(PROMPTS.length >= 23, `expected >= 22 prompts, got ${PROMPTS.length}`);
   const names = PROMPTS.map((p) => p.name);
   assert.equal(new Set(names).size, names.length, 'prompt names must be unique');
   for (const p of PROMPTS) {
@@ -59,8 +59,8 @@ test('no prompt contains an em dash, an en dash, or prescriptive vocabulary', ()
 });
 
 test('every tool description and schema string is dash-free too', () => {
-  assert.equal(TOOLS.length, 18);
-  assert.equal(SERVER.version, '1.8.0');
+  assert.equal(TOOLS.length, 21);
+  assert.equal(SERVER.version, '1.9.0');
   const scan = (val, where) => {
     if (typeof val === 'string') assert.doesNotMatch(val, DASH, `em/en dash in ${where}: ${val.slice(0, 60)}`);
     else if (Array.isArray(val)) val.forEach((v, i) => scan(v, `${where}[${i}]`));

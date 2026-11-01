@@ -377,7 +377,7 @@ test('end to end over stdio: tools/list advertises get_freshness and a stale exp
     const tl = await s.req('tools/list');
     const tool = tl.result.tools.find((t) => t.name === 'get_freshness');
     assert.ok(tool, 'get_freshness is listed');
-    assert.equal(tl.result.tools.length, 18);
+    assert.equal(tl.result.tools.length, 21);
     assert.deepEqual(tool.annotations, { readOnlyHint: true, idempotentHint: true, openWorldHint: false });
     assert.equal(tool.inputSchema.properties.maxAgeHours.type, 'number');
     assert.equal(tool.inputSchema.properties.maxAgeHours.exclusiveMinimum, 0);
