@@ -1,7 +1,7 @@
 {
   "identifier": "philipad-health-export-mcp",
   "name": "health-export-mcp",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "author": "Philip D'Souza",
   "authorUrl": "https://github.com/PhilipAD",
   "category": "health-wellness",
@@ -304,6 +304,24 @@
       }
     },
     {
+      "name": "get_check_ins",
+      "description": "Morning check-ins the user chose to share (health-check-ins.json): per day a self-rated feeling (1 rough to 5 great), an optional note, an intention for the day and whether it happened (answered the next morning). Optional {start, end} filters. Returns the rows plus a summary (rated, averageFeeling, intentionsAnswered, intentionsMet). Opt-in in the iOS app and off by default, so available:false is the usual answer and means not shared, never \"felt nothing\". A self-rating is the person's own words, not a measurement.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "start": {
+            "type": "string",
+            "description": "YYYY-MM-DD"
+          },
+          "end": {
+            "type": "string",
+            "description": "YYYY-MM-DD"
+          }
+        },
+        "additionalProperties": false
+      }
+    },
+    {
       "name": "get_workouts",
       "description": "Query the workouts cache with activityType (name or raw HealthKit id), start, end filters and cursor pagination. Records return as stored, including avgHeartRate, running dynamics, intervals and hasRoute when exported; older caches simply lack those keys.",
       "inputSchema": {
@@ -351,6 +369,54 @@
             "description": "A single waking day, YYYY-MM-DD."
           }
         }
+      }
+    },
+    {
+      "name": "get_strength_log",
+      "description": "The strength log the user keeps in the MetricBridge app (health-strength.json, opt-in, off by default): each session with its exercises and every set as entered (reps, kg, warmup or working, RPE), plus volumeKg, workingSets and an Epley bestEstimateKg per exercise, all-time records per exercise, and the routines the user saved (their own templates). Filters: {exercise (exact name, case-insensitive, e.g. \"Back squat\"), start, end (local days, inclusive)}. Sessions come oldest first; above 150 matches the most recent 150 are listed and `sessionsOmitted` counts the rest. An unknown exercise returns count 0 with `knownExercises`. Logged by hand, never read from Apple Health; when the file is missing the answer is available:false, which means the user has not switched the export on, not that they do not train.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "exercise": {
+            "type": "string",
+            "description": "One exercise, by the exact name in the log (case-insensitive), e.g. Back squat. Omit for every exercise."
+          },
+          "start": {
+            "type": "string",
+            "description": "First day (inclusive), YYYY-MM-DD."
+          },
+          "end": {
+            "type": "string",
+            "description": "Last day (inclusive), YYYY-MM-DD."
+          }
+        }
+      }
+    },
+    {
+      "name": "list_tags",
+      "description": "Tags the user logged in the iOS app (health-tags.json): lifestyle tags such as Alcohol or Sauna, and supplements such as Creatine or Magnesium, by name only and never an amount. Optional {kind: all | supplement | lifestyle, start, end}. Returns one row per tag (kind, days logged, firstDay, lastDay, most logged first) and the tag names per day. Tag export is opt-in in the app and off by default, so available:false is the usual answer and means the file was not exported, not that nothing was tagged. Treat any difference after tagged days as an association in this person's own data, never as evidence that a supplement works.",
+      "inputSchema": {
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": "string",
+            "enum": [
+              "all",
+              "supplement",
+              "lifestyle"
+            ],
+            "description": "Which tags: 'all' (default), 'supplement' or 'lifestyle'."
+          },
+          "start": {
+            "type": "string",
+            "description": "YYYY-MM-DD"
+          },
+          "end": {
+            "type": "string",
+            "description": "YYYY-MM-DD"
+          }
+        },
+        "additionalProperties": false
       }
     },
     {

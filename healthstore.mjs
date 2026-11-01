@@ -650,7 +650,7 @@ export async function status() {
     // Additive presence flags for the optional context files, so an agent knows which of the
     // context tools can answer before calling them. Absence means "not exported", never "none".
     contextFiles: DEMO
-      ? { events: true, agentEvents: false, readings: false, manifest: false, profile: true, sessions: true, cycles: true, days: true, sources: false }
+      ? { events: true, agentEvents: false, readings: false, manifest: false, profile: true, sessions: true, cycles: true, days: true, sources: false, strength: true, tags: true }
       : {
           // Either events file: the app's health-events.json or the agent's health-events-agent.json.
           events: !!ev.loadEventsFile() || fileExists(ev.AGENT_EVENTS_FILE),
@@ -666,6 +666,11 @@ export async function status() {
           // health-sources.json (schema minor 2): which devices feed the export and which won each
           // metric. False means the app build that wrote this export predates source attribution.
           sources: fileExists('health-sources.json'),
+          // health-strength.json (contract section 14): the strength log, only when the user switched
+          // its export on in the app.
+          strength: fileExists(ev.STRENGTH_FILE),
+          // health-tags.json (contract section 15): opt-in in the app, so false is the default.
+          tags: fileExists(ev.TAGS_FILE),
         },
     // Additive: true when daily points carry src/by or health-sources.json exists, so an agent
     // knows before calling resolve_metric whether per-source disagreement is visible in this export.
@@ -700,6 +705,9 @@ export const DATA_FILES = [
   'health-days.json',
   'health-sources.json',
   'health-readings.json',
+  'health-strength.json',
+  'health-tags.json',
+  'health-check-ins.json',
 ];
 
 /** The files that ARE the export: `stale` is judged on these alone (contract section 10.1).

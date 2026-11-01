@@ -211,8 +211,66 @@ function buildSessions(rng) {
   return { schema: 1, writtenAt: WRITTEN_AT, sessions };
 }
 
+// Three weeks of a simple squat, bench and row programme, three sessions a week, adding 2.5 kg
+// each week (the same shape as the app's screenshot seed). Built from fixed numbers, no PRNG, so
+// the derived volume and Epley estimates are easy to check by hand.
+function buildStrength() {
+  const epley = (kg, reps) => (reps === 1 ? kg : Math.round(kg * (1 + reps / 30) * 10) / 10);
+  const backs = [20, 18, 16, 13, 11, 9, 6, 4, 2];
+  const sessions = backs.map((back, i) => {
+    const add = Math.floor(i / 3) * 2.5;
+    const lift = (name, reps, kg, rpe, warmup) => ({
+      name,
+      volumeKg: Math.round(3 * reps * kg * 10) / 10,
+      sets: [...(warmup ? [{ reps: 8, kg: warmup, kind: 'warmup' }] : []),
+             ...[0, 1, 2].map(() => ({ reps, kg, kind: 'working', rpe }))],
+      bestEstimateKg: epley(kg, reps),
+    });
+    const exercises = [
+      lift('Back squat', 5, 80 + add, 8, 40),
+      lift('Bench press', 6, 60 + add, 8.5),
+      lift('Barbell row', 8, 50 + add, 7.5),
+    ];
+    return {
+      id: `demo-str-${i + 1}`,
+      start: `${day(back)}T18:00:00+01:00`,
+      day: day(back),
+      volumeKg: Math.round(exercises.reduce((t, e) => t + e.volumeKg, 0) * 10) / 10,
+      workingSets: 9,
+      exercises,
+      minutes: 55,
+      effort: 7,
+    };
+  });
+  const last = sessions[sessions.length - 1];
+  const records = last.exercises.map((e) => ({
+    exercise: e.name,
+    sessions: sessions.length,
+    lastDay: last.day,
+    bestEstimateKg: e.bestEstimateKg,
+    bestEstimateDay: sessions.find((s) => s.exercises.some((x) => x.name === e.name && x.bestEstimateKg === e.bestEstimateKg)).day,
+    heaviestKg: e.sets[e.sets.length - 1].kg,
+  }));
+  return { schema: 1, app: '1.21', writtenAt: WRITTEN_AT, unit: 'kg', formula: 'strength-v1', sessions, records };
+}
+
 function buildCycles() {
   return { schema: 1, writtenAt: WRITTEN_AT, cycleStarts: [day(77), day(49), day(20)] };
+}
+
+// The tag log as the app exports it with "Include tags in exports" on: creatine daily for the last
+// 30 days, magnesium on alternate days, sauna every fifth day, and a few evenings of alcohol.
+function buildTags() {
+  const days = {};
+  const add = (back, name) => { (days[day(back)] ??= []).push(name); };
+  for (let i = 0; i < 30; i++) {
+    add(i, 'Creatine');
+    if (i % 2 === 0) add(i, 'Magnesium');
+  }
+  for (let i = 0; i < 90; i += 5) add(i, 'Sauna');
+  for (const i of [3, 10, 17, 24, 31, 45]) add(i, 'Alcohol');
+  for (const d of Object.keys(days)) days[d].sort();
+  return { schema: 1, writtenAt: WRITTEN_AT, days, supplements: ['Creatine', 'Magnesium'] };
 }
 
 function buildDaysFile() {
@@ -254,6 +312,8 @@ export function demoData() {
     sessions: buildSessions(rng),
     cycles: buildCycles(),
     days: buildDaysFile(),
+    strength: buildStrength(),
+    tags: buildTags(),
   };
   return _demo;
 }
