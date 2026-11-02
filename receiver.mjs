@@ -59,6 +59,33 @@ const isLoopback = (h) => h === '127.0.0.1' || h === '::1' || h === 'localhost';
 
 const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
 
+// Source attribution (cache schema minor 2, whole-person reconciliation layer 1): `src` is the
+// label of the source the day's value came from; `by` maps every source that recorded that day to
+// its value. The app stamps these onto daily points and the MCP server reads them back verbatim
+// (healthstore.mjs rollUp → `src`/`by`), so a LAN push MUST carry them through untouched — dropping
+// them here silently strips the provenance every agent answer cites. They are still untrusted from a
+// client and validated like everything else: a short non-empty label, and a flat map of short
+// non-empty labels to finite numbers.
+const SRC_LABEL_MAX = 64, BY_SOURCES_MAX = 64;
+function sanitizeSrc(src) {
+  if (typeof src !== 'string') return null;
+  if (src.length === 0 || src.length > SRC_LABEL_MAX) return null;
+  return src;
+}
+function sanitizeBy(by) {
+  if (!by || typeof by !== 'object' || Array.isArray(by)) return null;
+  const entries = Object.entries(by);
+  if (entries.length === 0 || entries.length > BY_SOURCES_MAX) return null;
+  const out = {};
+  for (const [label, v] of entries) {
+    if (typeof label !== 'string' || label.length === 0 || label.length > SRC_LABEL_MAX) return null;
+    const n = Number(v);
+    if (!Number.isFinite(n)) return null;
+    out[label] = n;
+  }
+  return out;
+}
+
 // Validate/sanitise a pushed summary so a malicious LAN client can't poison the agent's context.
 function sanitize(incoming) {
   const out = {};
@@ -77,7 +104,13 @@ function sanitize(incoming) {
       // Kept only when it is a plain ISO 8601 instant, so a pushed payload cannot smuggle anything
       // else through to what the MCP server reads.
       const r = typeof p.r === 'string' && ISO_INSTANT.test(p.r) ? p.r : null;
-      daily.push(r ? { d: p.d, v, r } : { d: p.d, v });
+      const point = { d: p.d, v };
+      if (r) point.r = r;
+      const src = sanitizeSrc(p.src);
+      if (src !== null) point.src = src;
+      const by = sanitizeBy(p.by);
+      if (by !== null) point.by = by;
+      daily.push(point);
     }
     if (!daily.length) continue;
     out[name] = { unit: typeof m.unit === 'string' ? m.unit.slice(0, 32) : '', cumulative: !!m.cumulative, daily };
@@ -134,12 +167,26 @@ export function mergeCache(existing, incoming) {
     }
     for (const p of m.daily) {
       const prev = byDay.get(p.d);
-      const keep = !p.r && typeof prev?.r === 'string' && prev.v === p.v;
-      byDay.set(p.d, keep ? { ...p, r: prev.r } : p);
+      // A day keeps its recompute stamp (`r`) and source attribution (`src`/`by`) across a later
+      // push that re-sends the same value without them, matching HealthCache.merge on the app side;
+      // a changed value makes both stale, so they are replaced by the incoming point's own (or none).
+      const same = prev && prev.v === p.v;
+      const keep = same && !p.r && typeof prev.r === 'string';
+      const mergedPoint = { ...p };
+      if (keep) mergedPoint.r = prev.r;
+      if (same && !('src' in mergedPoint) && typeof prev.src === 'string') mergedPoint.src = prev.src;
+      if (same && !('by' in mergedPoint) && prev.by && typeof prev.by === 'object' && !Array.isArray(prev.by)) mergedPoint.by = prev.by;
+      byDay.set(p.d, mergedPoint);
     }
     merged[name] = { unit: m.unit || merged[name]?.unit || '', cumulative: !!m.cumulative,
       daily: [...byDay.entries()].sort((a, b) => a[0].localeCompare(b[0]))
-        .map(([d, p]) => (typeof p.r === 'string' ? { d, v: p.v, r: p.r } : { d, v: p.v })) };
+        .map(([d, p]) => {
+          const out = { d, v: p.v };
+          if (typeof p.r === 'string') out.r = p.r;
+          if (typeof p.src === 'string') out.src = p.src;
+          if (p.by && typeof p.by === 'object' && !Array.isArray(p.by)) out.by = p.by;
+          return out;
+        }) };
   }
   return merged;
 }
