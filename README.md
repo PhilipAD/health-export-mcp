@@ -1,6 +1,6 @@
 # health-export-mcp
 
-**An MCP server for your own Apple Health data.** 194 metrics, 21 tools (19 read-only, plus two that log events to their own file) and 23 prompts over local stdio, with zero dependencies, no account and no server of ours in the path. Your agent gets JSON with units, date ranges and coverage, and answers from your numbers.
+**An MCP server for your own Apple Health data.** 194 metrics, 22 tools (20 read-only, plus two that log events to their own file) and 23 prompts over local stdio, with zero dependencies, no account and no server of ours in the path. Your agent gets JSON with units, date ranges and coverage, and answers from your numbers.
 
 <p align="center">
   <a href="https://www.npmjs.com/package/health-export-mcp"><img alt="npm" src="https://img.shields.io/npm/v/health-export-mcp?color=cb3837" /></a>
@@ -38,7 +38,7 @@ Then ask *"Use health-export: how did my HRV this week compare with last week?"*
 3. **Check it arrived.** `npx -y health-export-mcp --doctor` prints the folder it chose and why, each file's age, and freshness. iCloud can take a few minutes to bring a new export to the Mac.
 
 <p align="center">
-  <img src="assets/architecture.svg" alt="Apple Health exports to iCloud, a folder, or your LAN; health-export-mcp reads it and serves 21 tools to your AI agent" width="100%" />
+  <img src="assets/architecture.svg" alt="Apple Health exports to iCloud, a folder, or your LAN; health-export-mcp reads it and serves 22 tools to your AI agent" width="100%" />
 </p>
 
 ---
@@ -142,7 +142,7 @@ Restart the client and try:
 
 ---
 
-## The 21 MCP tools
+## The 22 MCP tools
 
 Full reference with request/response examples: **[healthexport.dev/mcp](https://www.healthexport.dev/mcp/#tools)**.
 
@@ -164,6 +164,7 @@ Full reference with request/response examples: **[healthexport.dev/mcp](https://
 | `get_workouts` | Workouts by activity/date with pagination; includes heart rate, running dynamics, cycling power, intervals and `hasRoute` when exported. |
 | `get_sleep_sessions` | Clustered sleep sessions attributed to the waking day; split nights returned as separate sessions, duplicate copies of one night collapsed (`collapsedDuplicates`). |
 | `get_strength_log` | The strength log typed into the iOS app (`health-strength.json`, opt-in, off by default): each session with every set as entered, `volumeKg`, `workingSets`, an Epley `bestEstimateKg` per exercise, all-time records, and the user's saved routines. Filter by `exercise`, `start`, `end`. Missing file → `available:false`. |
+| `get_lab_results` | Lab results from Apple Health Records (`health-labs.json`; opt-in, off by default, folder export only, never iCloud Drive): each test with its results oldest first, value, date, institution and the lab's own reference range, exactly as reported. Nothing is flagged or interpreted, and units are never converted. Filter by `test`, `loinc`, `start`, `end`. Missing file → `available:false`. |
 | `get_check_ins` | Morning check-ins the user chose to share (`health-check-ins.json`, off by default in the app): self-rated feeling 1 to 5, note, intention and whether it happened, plus a summary. A self-rating, not a measurement. |
 | `get_cycle_context` | Day-in-cycle and coarse phase derived from logged period starts. Never predictive. |
 | `list_tags` | Tags logged in the app (`health-tags.json`, opt-in there and off by default): lifestyle tags and supplements by name, never an amount. `{kind: all, supplement or lifestyle, start, end}`; one row per tag plus the names per day. |
@@ -174,7 +175,7 @@ Full reference with request/response examples: **[healthexport.dev/mcp](https://
 
 ### Data files
 
-The daily cache (`.health-cache.json`) and workouts cache are joined by optional context files, all optional: `health-events.json` (the logging surface), `health-profile.json` (opt-in context), `health-sessions.json` (sleep sessions), `health-cycles.json` (observed cycle starts), `health-days.json` (timezone change log), `health-readings.json` (individual blood pressure readings), `health-check-ins.json` (morning check-ins, opt-in), `health-strength.json` (the strength log, when its export is switched on), `health-tags.json` (logged tags with supplements marked, opt-in in the app) and `.health-manifest.json` (what the phone last wrote, for the stale-copy check). The server reads all of them and writes only `health-events-agent.json` (events logged with `add_event`). An absent file is reported as `available:false` with a note, never as "no data". Formats: [docs/SCHEMA-CONTRACTS.md](docs/SCHEMA-CONTRACTS.md).
+The daily cache (`.health-cache.json`) and workouts cache are joined by optional context files, all optional: `health-events.json` (the logging surface), `health-profile.json` (opt-in context), `health-sessions.json` (sleep sessions), `health-cycles.json` (observed cycle starts), `health-days.json` (timezone change log), `health-readings.json` (individual blood pressure readings), `health-check-ins.json` (morning check-ins, opt-in), `health-strength.json` (the strength log, when its export is switched on), `health-labs.json` (lab results from Apple Health Records, opt-in, folder export only, never iCloud Drive), `health-tags.json` (logged tags with supplements marked, opt-in in the app) and `.health-manifest.json` (what the phone last wrote, for the stale-copy check). The server reads all of them and writes only `health-events-agent.json` (events logged with `add_event`). An absent file is reported as `available:false` with a note, never as "no data". Formats: [docs/SCHEMA-CONTRACTS.md](docs/SCHEMA-CONTRACTS.md).
 
 Two patterns worth knowing: [query a parent's Apple Health from your own AI](docs/caregiver-setup.md) (consent-first, the parent's phone is the authority) and [logging data into Apple Health via Shortcuts](docs/shortcuts-write-bridge.md) (the server never writes to Apple Health).
 
@@ -376,7 +377,7 @@ stdio transport (newline-delimited JSON-RPC 2.0), the universal MCP transport. O
 
 ## How it works
 
-The iOS app reads Apple Health (read-only) and writes a compact `.health-cache.json` (plus optional context files) to the destination you choose. This server reads those files and exposes the 21 tools above over MCP. No bridge, no Docker, no database: just files and stdio.
+The iOS app reads Apple Health (read-only) and writes a compact `.health-cache.json` (plus optional context files) to the destination you choose. This server reads those files and exposes the 22 tools above over MCP. No bridge, no Docker, no database: just files and stdio.
 
 ```
 Apple Health → MetricBridge (iOS) → .health-cache.json → health-export-mcp → MCP client → you

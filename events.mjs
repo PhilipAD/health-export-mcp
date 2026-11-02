@@ -9,6 +9,7 @@
 //   health-cycles.json    user-logged menstrual cycle starts (observed only, never predictive)
 //   health-days.json      the timezone change log (the travel-day source)
 //   health-strength.json  the strength log typed into the app: sessions, sets, records (opt-in, contract section 14)
+//   health-labs.json      lab results from Apple Health Records, as the lab reported them (opt-in, folder export only, contract section 17)
 //
 // Every file is OPTIONAL. An absent file answers {available:false, note}, never "no data": a
 // consumer must never read a missing file as "nothing happened". All reads share healthstore's
@@ -42,6 +43,8 @@ const SESSIONS_FILE = 'health-sessions.json';
 const CYCLES_FILE = 'health-cycles.json';
 const DAYS_FILE = 'health-days.json';
 export const STRENGTH_FILE = 'health-strength.json';
+// Lab results (contract section 17). Opt-in in the app, written to a picked folder only, never iCloud Drive.
+export const LABS_FILE = 'health-labs.json';
 // The iOS app's tag log (contract section 15). Opt-in in the app ("Include tags in exports"), so
 // absence is the default state, not a sign that nothing was tagged.
 export const TAGS_FILE = 'health-tags.json';
@@ -128,6 +131,12 @@ export function loadStrengthFile() {
   if (DEMO) return demoData().strength;
   const raw = readJSONCached(dataPath(STRENGTH_FILE), null);
   return raw && Array.isArray(raw.sessions) ? raw : null;
+}
+
+export function loadLabsFile() {
+  if (DEMO) return demoData().labs;
+  const raw = readJSONCached(dataPath(LABS_FILE), null);
+  return raw && Array.isArray(raw.tests) ? raw : null;
 }
 
 // ---- derived helpers shared with healthstore's segment honesty -------------
@@ -642,7 +651,7 @@ export async function getStrengthLog({ exercise, start, end } = {}) {
       .sort((a, b) => b.sessions - a.sessions || a.name.localeCompare(b.name)),
     sessions,
     records,
-    recordsNote: 'records are all-time per exercise as the app computed them (best estimate and its day, heaviest working set, sessions, last day), whatever start and end were passed.',
+    recordsNote: 'records are all-time per exercise as the app computed them (best estimate and its day, heaviest working set, best set volume, best session volume, the heaviest load for at least 1/3/5/8/10 reps when present, sessions, last day), whatever start and end were passed.',
     // The user's saved routines (their own plans, in their order), never filtered by date; with an
     // exercise filter, only the routines that include it. Absent from files written before routines.
     routines,
@@ -658,6 +667,70 @@ export async function getStrengthLog({ exercise, start, end } = {}) {
       ? ` It is planned in ${routines.length} saved routine${routines.length === 1 ? '' : 's'} (listed in routines) but not logged${start || end ? ' in this range' : ''} yet.`
       : '';
     out.note = `No session${start || end ? ' in this range' : ''} includes an exercise named "${exercise.trim()}".${planned} Names match case-insensitively but exactly; knownExercises lists every name in the log and in saved routines. ` + STRENGTH_NOTE;
+  }
+  return out;
+}
+
+// ---- lab results (health-labs.json, contract section 17) -------------------
+
+// Newest results kept when a range holds more, so an answer stays inside the response budget.
+const LABS_MAX_RESULTS = 400;
+const LABS_NOTE = 'Lab results the user\'s own providers shared with Apple Health Records, read on their iPhone and exported only because they switched it on. Every value, unit, reference range and date is exactly as the lab reported it: nothing is flagged, graded or interpreted here, and you should not present a result as normal or abnormal. A test reported in two units is listed once per unit (splitByUnit: true) and the units are never converted, so never compare values across them. value is a plain number; valueText holds anything else the lab sent ("Negative", "<5", a component list). refLow/refHigh are numeric reference bounds in the value\'s own unit; refRangeText is the lab\'s own wording. Results are listed oldest first. What a result means for this person is a question for their clinician.';
+
+const lc = (s) => (typeof s === 'string' ? s.trim().toLocaleLowerCase('en') : '');
+
+export async function getLabResults({ test, loinc, start, end } = {}) {
+  assertUnlocked();
+  start = assertDay(start, 'start');
+  end = assertDay(end, 'end');
+  if (start && end && start > end) throw new Error(`start (${start}) is after end (${end})`);
+  for (const [k, v] of [['test', test], ['loinc', loinc]]) {
+    if (v !== undefined && v !== null && typeof v !== 'string') throw new Error(`${k} must be a string`);
+  }
+  const wantedName = lc(test);
+  const wantedLoinc = typeof loinc === 'string' ? loinc.trim() : '';
+  const file = loadLabsFile();
+  if (!file) {
+    return absent(LABS_FILE, 'Lab results appear when the user connects lab results from Health Records in the iOS app and switches on Lab results > Include in exports. They are written to a picked folder only, never to iCloud Drive, and the export is off by default.');
+  }
+  const all = file.tests.filter((t) => t && typeof t.name === 'string' && Array.isArray(t.results));
+  const matches = (t) => (!wantedLoinc || t.loinc === wantedLoinc) && (!wantedName || lc(t.name).includes(wantedName));
+  const inRange = (r) => r && typeof r.day === 'string' && (!start || r.day >= start) && (!end || r.day <= end);
+  const known = all.map((t) => ({
+    name: t.name, ...(t.loinc && { loinc: t.loinc }), ...(t.unit && { unit: t.unit }),
+    results: t.results.length,
+    latestDay: t.results.map((r) => r?.day).filter((d) => typeof d === 'string').sort().pop() ?? null,
+  }));
+  let tests = all.filter(matches)
+    .map((t) => ({ ...t, results: t.results.filter(inRange).sort((a, b) => a.day.localeCompare(b.day) || String(a.date).localeCompare(String(b.date))) }))
+    .filter((t) => t.results.length > 0);
+  const matched = tests.reduce((n, t) => n + t.results.length, 0);
+  const omitted = Math.max(0, matched - LABS_MAX_RESULTS);
+  if (omitted) {
+    // Drop the oldest results across all tests, keeping each test's newest.
+    const flat = tests.flatMap((t, i) => t.results.map((r) => ({ i, r })))
+      .sort((a, b) => b.r.day.localeCompare(a.r.day) || String(b.r.date).localeCompare(String(a.r.date)))
+      .slice(0, LABS_MAX_RESULTS);
+    const keep = tests.map(() => new Set());
+    for (const { i, r } of flat) keep[i].add(r);
+    tests = tests.map((t, i) => ({ ...t, results: t.results.filter((r) => keep[i].has(r)) })).filter((t) => t.results.length > 0);
+  }
+  const out = {
+    available: true,
+    source: file.source ?? 'apple-health-records',
+    writtenAt: file.writtenAt ?? null,
+    count: matched,
+    testCount: tests.length,
+    ...(omitted > 0 && {
+      resultsOmitted: omitted,
+      omittedNote: `${matched} results match; the ${LABS_MAX_RESULTS} most recent are listed and ${omitted} older ones are omitted. Narrow test, loinc, start or end to see them.`,
+    }),
+    tests,
+    note: LABS_NOTE,
+  };
+  if (matched === 0) {
+    out.knownTests = known;
+    out.note = `No lab result matches${wantedName || wantedLoinc || start || end ? ' this filter' : ''}. knownTests lists every test in the export with its result count and latest day. ` + LABS_NOTE;
   }
   return out;
 }

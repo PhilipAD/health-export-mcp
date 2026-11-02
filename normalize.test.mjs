@@ -330,7 +330,7 @@ test('server registers resolve_metric as a read-only tool with name required', (
   assert.ok(t);
   assert.deepEqual(t.inputSchema.required, ['name']);
   assert.deepEqual(ANNOTATIONS, { readOnlyHint: true, idempotentHint: true, openWorldHint: false });
-  assert.equal(TOOLS.length, 21);
+  assert.equal(TOOLS.length, 22);
   assert.equal(t.annotations, undefined, 'resolve_metric takes the shared read-only annotations');
   assert.ok(!/[\u2013\u2014]/.test(t.description), 'no en or em dashes');
 });

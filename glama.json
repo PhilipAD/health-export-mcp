@@ -4,8 +4,8 @@
     "PhilipAD"
   ],
   "name": "health-export-mcp",
-  "description": "Query 194 Apple Health/HealthKit metrics from any MCP agent: 21 tools (19 read-only), 23 prompts, zero dependencies, local stdio. The open-source server for the MetricBridge iOS app.",
-  "longDescription": "An open-source, zero-dependency MCP server that turns your Apple Health export into 19 read-only query tools any AI agent can call in natural language. Tracks HRV, sleep, resting heart rate, steps, workouts, VO₂ max, and 180+ more metrics, all local-first with no developer server in the path.",
+  "description": "Query 194 Apple Health/HealthKit metrics from any MCP agent: 22 tools (20 read-only), 23 prompts, zero dependencies, local stdio. The open-source server for the MetricBridge iOS app.",
+  "longDescription": "An open-source, zero-dependency MCP server that turns your Apple Health export into 20 read-only query tools any AI agent can call in natural language. Tracks HRV, sleep, resting heart rate, steps, workouts, VO₂ max, and 180+ more metrics, all local-first with no developer server in the path.",
   "categories": [
     "healthcare",
     "lifestyle",
