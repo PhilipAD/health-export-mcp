@@ -546,3 +546,60 @@ the export when the destination is encrypted. Not sent over the local network or
 - Every key but `date` is optional. `intentionMet` answers that day's own intention, the next morning.
 - A self-rating, never a measurement: the server's `get_check_ins` says so on every answer, and an
   absent file reads as "not shared", never "felt nothing".
+
+## 17. `health-labs.json` (NEW, visible): lab results from Health Records (2026-10-30, #401 item 20b, additive, opt-in)
+
+The lab results the person's providers share with Apple Health Records (HealthKit `.labResultRecord`),
+read on the iPhone by the Lab results screen (`LabResultsStore`) and kept in memory there; this file is
+a copy made only when **Lab results > Include in exports** is on (`AppSettings.exportLabResults`,
+**off by default**). Unlike every other context file it is written to the **picked folder only**:
+never to iCloud Drive (App Review Guideline 5.1.3(ii): no personal health information in iCloud), never
+to the webhook, never over the local network. Every iCloud write removes a copy if one is there. A
+build without the Health Records entitlement (`LabRecords.isEnabledInBuild`) never reads lab results,
+so never writes the file. Whole-file replace on every context write and every daily export, DELETED
+from the folder when the switch goes off, listed in `ContextFiles.destinationFileNames` so "Delete all
+exports" removes it, and sealed like the rest of the export when the folder encrypts. A read that
+fails (phone locked, access lost) leaves the file as it was and never writes an empty one over it.
+
+```json
+{
+  "schema": 1,
+  "app": "1.21",
+  "writtenAt": "2026-10-30T08:00:00Z",
+  "source": "apple-health-records",
+  "tests": [
+    { "name": "LDL Cholesterol", "loinc": "13457-7", "unit": "mg/dL",
+      "results": [
+        { "id": "Sample Clinic/ldl-1", "date": "2025-03-01T09:00:00+00:00", "day": "2025-03-01",
+          "value": 131, "unit": "mg/dL", "refLow": 0, "refHigh": 99, "institution": "Sample Clinic", "fhir": "DSTU2" },
+        { "id": "Sample Clinic/ldl-2", "date": "2026-09-20T09:00:00+01:00", "day": "2026-09-20",
+          "value": 96, "unit": "mg/dL", "refRangeText": "0-99 mg/dL", "refLow": 0, "refHigh": 99,
+          "institution": "Sample Clinic", "fhir": "R4" }
+      ] },
+    { "name": "Vitamin D, 25-Hydroxy", "loinc": "1989-3", "unit": "nmol/L", "splitByUnit": true,
+      "results": [ { "id": "Sample Hospital/vd-1", "date": "2025-03-01T09:00:00+00:00", "day": "2025-03-01",
+                     "value": 61, "unit": "nmol/L", "institution": "Sample Hospital", "fhir": "DSTU2" } ] }
+  ]
+}
+```
+
+- Values, units, reference ranges and dates are exactly as the lab reported them. Nothing is flagged,
+  graded or compared with a population: there is no high/low field, and the app never calls a result
+  normal or abnormal.
+- A test is the app's own grouping (`LabRecords.series`): results sharing a LOINC code (by normalised
+  name when the lab sent none) **and** a unit. A test reported in two units is two entries, each with
+  `splitByUnit: true`, and the units are never converted. Entries are ordered by name; `results` is
+  oldest first.
+- `value` is a plain number. Anything else the lab sent is `valueText`, verbatim: "Negative", "<5" (a
+  comparator result), or a component list such as "Systolic: 120 mm[Hg]; Diastolic: 80 mm[Hg]". The two
+  never appear together.
+- `refLow` / `refHigh` are numeric reference bounds, present only when both are in the value's own
+  unit; `refRangeText` is the lab's own wording. Either may be absent.
+- `date` is ISO 8601 in the writing device's time zone; `day` is the calendar day of that zone. A date
+  without a time is read as midday local, so it never slips a day. `fhir` is `R4` or `DSTU2`. `id` is
+  the provider's resource id (prefixed with the institution) when it sent one.
+- Server: `get_lab_results {test?, loinc?, start?, end?}` (read-only). `test` is a case-insensitive part
+  of the name; `loinc` is exact; `start`/`end` filter on `day`. No match returns `count: 0` with
+  `knownTests`. Above 400 matching results the newest 400 are returned with `resultsOmitted`. A missing
+  file answers `available: false`, which means the export is off (or the build has no Health Records
+  access), not that the person has no results. `get_mcp_status` `contextFiles.labs`.

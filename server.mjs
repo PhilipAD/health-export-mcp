@@ -21,7 +21,7 @@ import * as ev from './events.mjs';
 import { PROMPTS } from './prompts.mjs';
 import { DEMO } from './demo.mjs';
 
-const SERVER = { name: 'health-export-ai', version: '1.9.0' };
+const SERVER = { name: 'health-export-ai', version: '1.10.0' };
 const DEFAULT_PROTOCOL = '2025-06-18';
 const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
 
@@ -275,6 +275,21 @@ const TOOLS = [
     },
     _meta: BIG_RESULT_META,
     handler: (a) => ev.getStrengthLog(a),
+  },
+  {
+    name: 'get_lab_results',
+    description: "The user's lab results from Apple Health Records (health-labs.json), exported only when they switched on Lab results > Include in exports in the MetricBridge iOS app, and only into a picked folder (never iCloud Drive). Off by default. Each test (LOINC code when the lab sent one, name, unit) lists its results oldest first, with the value, date, institution and the lab's own reference range, all exactly as reported. Nothing is flagged, graded or interpreted: do not call a result normal or abnormal, and never convert between units (a test in two units is listed once per unit, splitByUnit: true). Filters: {test (case-insensitive part of the name, e.g. ldl), loinc (exact code, e.g. 13457-7), start, end (local days, inclusive)}. Above 400 matching results the newest 400 are returned with `resultsOmitted`. No match returns count 0 with `knownTests`. When the file is missing the answer is available:false, which means the user has not exported lab results, not that they have none.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        test: { type: 'string', description: 'Part of a test name, case-insensitive, e.g. ldl or vitamin d. Omit for every test.' },
+        loinc: { type: 'string', description: 'Exact LOINC code, e.g. 13457-7. Omit for every test.' },
+        start: { ...DATE, description: 'First result day (inclusive), YYYY-MM-DD.' },
+        end: { ...DATE, description: 'Last result day (inclusive), YYYY-MM-DD.' },
+      },
+    },
+    _meta: BIG_RESULT_META,
+    handler: (a) => ev.getLabResults(a),
   },
   {
     name: 'list_tags',

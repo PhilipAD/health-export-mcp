@@ -659,7 +659,7 @@ function startServer(env) {
   };
 }
 
-test('over stdio: 21 tools, the two writers annotated honestly, and an add/list/remove round trip', async () => {
+test('over stdio: 22 tools, the two writers annotated honestly, and an add/list/remove round trip', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'hx-347-stdio-'));
   fs.writeFileSync(path.join(dir, '.health-cache.json'), JSON.stringify(cache()));
   fs.writeFileSync(path.join(dir, 'health-sessions.json'), JSON.stringify(sessionsFile([night(2), night(1)])));
@@ -667,7 +667,7 @@ test('over stdio: 21 tools, the two writers annotated honestly, and an add/list/
   try {
     await s.init();
     const tools = (await s.req('tools/list')).result.tools;
-    assert.equal(tools.length, 21);
+    assert.equal(tools.length, 22);
     const by = Object.fromEntries(tools.map((t) => [t.name, t]));
     assert.deepEqual(by.add_event.annotations, { readOnlyHint: false, destructiveHint: false, idempotentHint: true, openWorldHint: false });
     assert.deepEqual(by.remove_event.annotations, { readOnlyHint: false, destructiveHint: true, idempotentHint: true, openWorldHint: false });

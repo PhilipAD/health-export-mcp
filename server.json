@@ -2,19 +2,19 @@
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.PhilipAD/health-export-mcp",
   "title": "MetricBridge Apple Health",
-  "description": "Ask your agent about your own Apple Health data: 194 metrics, 21 tools, local, 0 deps.",
+  "description": "Ask your agent about your own Apple Health data: 194 metrics, 22 tools, local, 0 deps.",
   "websiteUrl": "https://www.healthexport.dev/mcp/",
   "repository": {
     "url": "https://github.com/PhilipAD/health-export-mcp",
     "source": "github"
   },
-  "version": "1.9.0",
+  "version": "1.10.0",
   "packages": [
     {
       "registryType": "npm",
       "registryBaseUrl": "https://registry.npmjs.org",
       "identifier": "health-export-mcp",
-      "version": "1.9.0",
+      "version": "1.10.0",
       "transport": {
         "type": "stdio"
       },
@@ -41,9 +41,9 @@
     },
     {
       "registryType": "mcpb",
-      "identifier": "https://github.com/PhilipAD/health-export-mcp/releases/download/v1.9.0/health-export.mcpb",
-      "version": "1.9.0",
-      "fileSha256": "8eeff1674e391487e1d10d2b730910a91c48665709b1b5cf950bb0841a65f78f",
+      "identifier": "https://github.com/PhilipAD/health-export-mcp/releases/download/v1.10.0/health-export.mcpb",
+      "version": "1.10.0",
+      "fileSha256": "85cb4acc408ee1f9ba35150c7cf397a970c53fbeb2f58b2886faf6e74d1e28a9",
       "transport": {
         "type": "stdio"
       },

@@ -59,8 +59,8 @@ test('no prompt contains an em dash, an en dash, or prescriptive vocabulary', ()
 });
 
 test('every tool description and schema string is dash-free too', () => {
-  assert.equal(TOOLS.length, 21);
-  assert.equal(SERVER.version, '1.9.0');
+  assert.equal(TOOLS.length, 22);
+  assert.equal(SERVER.version, '1.10.0');
   const scan = (val, where) => {
     if (typeof val === 'string') assert.doesNotMatch(val, DASH, `em/en dash in ${where}: ${val.slice(0, 60)}`);
     else if (Array.isArray(val)) val.forEach((v, i) => scan(v, `${where}[${i}]`));
