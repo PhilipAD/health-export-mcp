@@ -8,6 +8,11 @@
 //   POST /health-cache          (HTTP — reliable, works from iOS background uploads)
 //   GET  /health-cache-ws       (WebSocket upgrade — foreground real-time push)
 //   Both write <HEALTH_DATA_DIR>/.health-cache.json, which the MCP server then reads.
+//   Both also accept ONE typed document, `strength.log` (the app's opt-in "Strength log" switch for
+//   this destination): it is validated and written whole to <HEALTH_DATA_DIR>/health-strength.json,
+//   the file `get_strength_log` reads. Any other `type` is still treated as the daily summary (an
+//   unknown key is not a metric and is skipped), so a newer app never breaks an older receiver and
+//   the other way round.
 //
 // Security:
 //   - Binds 127.0.0.1 by default; HEALTH_LISTEN_HOST=0.0.0.0 for LAN.
@@ -191,9 +196,111 @@ export function mergeCache(existing, incoming) {
   return merged;
 }
 
+
+// ---- strength.log (typed document, docs/SCHEMA-CONTRACTS.md sections 10 and 14) ----------------
+//
+// The app sends the SAME body the webhook gets: {type:"strength.log", schema:1, id, app, sentAt,
+// data:{metrics:[], strengthLog:{mode:"replace", unit, formula, sessions, records, routines}}}.
+// It is a whole-state replace, so this writes health-strength.json (the exact shape the file export
+// writes: schema, app, writtenAt, unit, formula, sessions, records, routines) and never merges.
+// Everything is rebuilt field by field from an allowlist: the body comes from a LAN client and ends
+// up in an agent's context, so unknown keys are dropped, strings are length-capped, numbers must be
+// finite and the sizes are bounded.
+export const STRENGTH_TYPE = 'strength.log';
+export const STRENGTH_FILE = 'health-strength.json';
+const MAX_SESSIONS = 20000, MAX_EXERCISES = 100, MAX_SETS = 300, MAX_RECORDS = 2000, MAX_ROUTINES = 500, MAX_REP_BESTS = 10;
+const str = (v, max) => (typeof v === 'string' && v.length > 0 ? v.slice(0, max) : undefined);
+const num = (v) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
+const dayStr = (v) => (typeof v === 'string' && DAY_RE.test(v) ? v : undefined);
+const pick = (src, spec) => {
+  const out = {};
+  for (const [k, f] of Object.entries(spec)) { const v = f(src?.[k]); if (v !== undefined) out[k] = v; }
+  return out;
+};
+const sName = (v) => str(v, 120);
+const setSpec = {
+  reps: num, kg: num, rpe: num,
+  kind: (v) => (v === 'warmup' || v === 'working' ? v : undefined),
+};
+const cleanSets = (a) => (Array.isArray(a) ? a.slice(0, MAX_SETS).filter((x) => x && typeof x === 'object')
+  .map((x) => pick(x, setSpec)).filter((x) => x.reps !== undefined && x.kind) : []);
+const cleanExercises = (a, extra) => (Array.isArray(a) ? a.slice(0, MAX_EXERCISES).map((e) => {
+  const name = sName(e?.name);
+  return name ? { name, ...pick(e, extra), sets: cleanSets(e.sets) } : null;
+}).filter(Boolean) : []);
+const sessionSpec = {
+  id: (v) => str(v, 64), start: (v) => str(v, 40), day: dayStr, minutes: num, effort: num,
+  workoutId: (v) => str(v, 64), routineId: (v) => str(v, 64), notes: (v) => str(v, 2000),
+  volumeKg: num, workingSets: num,
+};
+const recordSpec = {
+  exercise: sName, bestEstimateKg: num, bestEstimateDay: dayStr, heaviestKg: num, sessions: num, lastDay: dayStr,
+  bestSetVolumeKg: num, bestSetVolumeDay: dayStr, bestSessionVolumeKg: num, bestSessionVolumeDay: dayStr,
+};
+const routineSpec = { id: (v) => str(v, 64), name: (v) => str(v, 120), createdAt: (v) => str(v, 40), lastUsedDay: dayStr };
+
+/// Rebuild the strength log from a pushed `strength.log` document, or throw if it has no sessions list.
+export function sanitizeStrengthLog(doc, now = new Date()) {
+  const log = doc?.data?.strengthLog;
+  if (!log || typeof log !== 'object' || !Array.isArray(log.sessions)) {
+    throw Object.assign(new Error('strength.log without data.strengthLog.sessions'), { status: 400 });
+  }
+  const sessions = log.sessions.slice(0, MAX_SESSIONS).filter((s) => s && typeof s === 'object' && dayStr(s.day)).map((s) => ({
+    ...pick(s, sessionSpec),
+    exercises: cleanExercises(s.exercises, { volumeKg: num, bestEstimateKg: num }),
+  }));
+  const records = (Array.isArray(log.records) ? log.records.slice(0, MAX_RECORDS) : []).filter((r) => r && sName(r.exercise)).map((r) => {
+    const o = pick(r, recordSpec);
+    const reps = (Array.isArray(r.repBests) ? r.repBests.slice(0, MAX_REP_BESTS) : [])
+      .map((b) => pick(b, { reps: num, kg: num, day: dayStr })).filter((b) => b.reps !== undefined && b.kg !== undefined && b.day);
+    if (reps.length) o.repBests = reps;
+    return o;
+  });
+  const routines = (Array.isArray(log.routines) ? log.routines.slice(0, MAX_ROUTINES) : []).filter((r) => r && sName(r.name)).map((r) => ({
+    ...pick(r, routineSpec), exercises: cleanExercises(r.exercises, {}),
+  }));
+  const sent = typeof doc.sentAt === 'string' && ISO_INSTANT.test(doc.sentAt) ? doc.sentAt : null;
+  return {
+    schema: 1,
+    app: str(doc.app, 32) ?? '',
+    writtenAt: sent ?? now.toISOString().replace(/\.\d+Z$/, 'Z'),
+    unit: 'kg',
+    ...(str(log.formula, 32) && { formula: str(log.formula, 32) }),
+    sessions, records, routines,
+  };
+}
+
+function writeStrength(dir, doc, passphrase = configuredPassphrase(), sealFresh = false) {
+  const file = path.join(dir, STRENGTH_FILE);
+  const clean = sanitizeStrengthLog(doc);
+  fs.mkdirSync(dir, { recursive: true });
+  // Same at-rest rule as the cache: an existing envelope keeps its salt (the app and this server
+  // hold the key for that salt), a fresh file is sealed when encryption is required.
+  const base = readMergeBase(file, null, passphrase);
+  const text = JSON.stringify(clean, null, 2);
+  const out = sealOutput(base.sealedLike, text, passphrase, sealFresh);
+  if (Buffer.byteLength(out) > MAX_CACHE_FILE) throw new Error('strength log would exceed the size ceiling');
+  atomicWrite(file, out);
+  log(`strength.log -> ${clean.sessions.length} sessions in ${file}`);
+  return clean.sessions.length;
+}
+
+function sealOutput(sealedLike, text, passphrase, sealFresh) {
+  if (sealedLike || (sealFresh && passphrase)) {
+    return JSON.stringify(sealEnvelope(text, passphrase, { salt: sealedLike?.salt, iter: sealedLike?.iter }));
+  }
+  if (sealFresh) throw new Error('encryption required but no passphrase configured - refusing to store plaintext');
+  return text;
+}
+
+function atomicWrite(file, out) {
+  const tmp = `${file}.tmp-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;  // unique → no concurrent-write race
+  fs.writeFileSync(tmp, out, { mode: 0o600 });
+  fs.renameSync(tmp, file);
+}
+
 function writeCache(dir, json, passphrase = configuredPassphrase(), sealFresh = false) {
   const file = path.join(dir, '.health-cache.json');
-  const tmp = `${file}.tmp-${process.pid}-${crypto.randomBytes(4).toString('hex')}`;  // unique → no concurrent-write race
   fs.mkdirSync(dir, { recursive: true });
   const base = readMergeBase(file, {}, passphrase);
   const merged = mergeCache(base.value, json);
@@ -204,19 +311,11 @@ function writeCache(dir, json, passphrase = configuredPassphrase(), sealFresh = 
   // every incoming push was encrypted — the flag promised full at-rest encryption and silently
   // delivered plaintext. Refuse to store plaintext when encryption is required but no passphrase
   // is configured: a misconfiguration, not a downgrade path.
-  let out;
-  if (base.sealedLike || (sealFresh && passphrase)) {
-    out = JSON.stringify(sealEnvelope(text, passphrase, { salt: base.sealedLike?.salt, iter: base.sealedLike?.iter }));
-  } else if (sealFresh) {
-    throw new Error('encryption required but no passphrase configured - refusing to store plaintext');
-  } else {
-    out = text;
-  }
+  const out = sealOutput(base.sealedLike, text, passphrase, sealFresh);
   if (Buffer.byteLength(out) > MAX_CACHE_FILE) {
     throw new Error('cache would exceed the size ceiling; refusing to grow it further');
   }
-  fs.writeFileSync(tmp, out, { mode: 0o600 });
-  fs.renameSync(tmp, file);
+  atomicWrite(file, out);
   log(`merged ${Object.keys(sanitize(json)).length} -> ${Object.keys(merged).length} metrics in ${file}`);
   return Object.keys(merged).length;
 }
@@ -232,6 +331,8 @@ export function startReceiver({
   // passes HEALTH_REQUIRE_ENCRYPTED through to first-write sealing, closing the fresh-dir
   // plaintext-at-rest gap.
   onCache = (json) => writeCache(dir, json, passphrase(), requireEncrypted()),
+  // The `strength.log` typed document (whole-state replace into health-strength.json). Tests inject one.
+  onStrength = (doc) => writeStrength(dir, doc, passphrase(), requireEncrypted()),
   // A function, read per request: the environment is the source in production, tests inject one.
   passphrase = () => configuredPassphrase(),
   requireEncrypted = () => process.env.HEALTH_REQUIRE_ENCRYPTED === '1',
@@ -307,6 +408,11 @@ export function startReceiver({
             return finish(422, { ok: false, hae: true, reason, error: e instanceof EnvelopeError ? e.message : 'could not decrypt' });
           }
         }
+        if (parsed?.type === STRENGTH_TYPE) {
+          try { const n = onStrength(parsed); finish(200, { ok: true, hae: true, type: STRENGTH_TYPE, sessions: n }); }
+          catch (e) { log('strength.log refused', e.message); finish(e.status || 500, { ok: false, hae: true, error: 'strength.log: ' + (e.code || e.message) }); }
+          return;
+        }
         try { const n = onCache(parsed); finish(200, { ok: true, hae: true, metrics: n }); }
         catch (e) { log('write failed', e.message); finish(500, { ok: false, hae: true, error: 'write failed: ' + (e.code || e.message) }); } // 500 = disk/write
       });
@@ -344,8 +450,13 @@ export function startReceiver({
         let parsedMsg = JSON.parse(msg);
         if (requireEncrypted() && !isEnvelope(parsedMsg)) throw new Error('plaintext push refused (HEALTH_REQUIRE_ENCRYPTED)');
         if (isEnvelope(parsedMsg)) parsedMsg = openEnvelopeJSON(parsedMsg, passphrase());
-        const n = onCache(parsedMsg);
-        socket.write(encodeTextFrame(JSON.stringify({ ok: true, metrics: n })));
+        if (parsedMsg?.type === STRENGTH_TYPE) {
+          const n = onStrength(parsedMsg);
+          socket.write(encodeTextFrame(JSON.stringify({ ok: true, type: STRENGTH_TYPE, sessions: n })));
+        } else {
+          const n = onCache(parsedMsg);
+          socket.write(encodeTextFrame(JSON.stringify({ ok: true, metrics: n })));
+        }
       }
       catch (e) { log('bad WS json', e.message); socket.write(encodeTextFrame(JSON.stringify({ ok: false }))); }
       socket.end();
