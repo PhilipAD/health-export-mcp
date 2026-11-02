@@ -609,7 +609,7 @@ export async function getStrengthLog({ exercise, start, end } = {}) {
   const wanted = exercise?.trim() ? exercise.trim().toLocaleLowerCase('en') : null;
   const file = loadStrengthFile();
   if (!file) {
-    return absent(STRENGTH_FILE, 'The strength log appears when the user switches on Training > Include in exports in the iOS app and exports to iCloud Drive or a folder. It is off by default.');
+    return absent(STRENGTH_FILE, 'The strength log appears when the user switches on Training > Include in exports in the iOS app and exports to iCloud Drive or a folder, or switches on Strength log for the local network destination (Settings > Local network). It is off by default.');
   }
   const all = file.sessions.filter((s) => s && typeof s.day === 'string' && Array.isArray(s.exercises));
   let sessions = all;

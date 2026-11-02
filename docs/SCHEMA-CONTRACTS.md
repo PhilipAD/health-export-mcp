@@ -418,8 +418,8 @@ that read the export. **Opt-in, off by default** (`AppSettings.exportsStrengthLo
 Include in exports): the log was typed into the app and, before this file, never left it. Written
 into iCloud Drive and the picked folder beside the other context files, sealed when that
 destination is encrypted, excluded from device backup like every other export file, and removed by
-"Delete all exports". Not sent over the local network (that receiver takes the daily summary only)
-or to the webhook.
+"Delete all exports". The webhook has its own opt-in (`strength.log`, app contract section 10). The
+local network destination has one too (2026-11-02, #501, additive): see "LAN delivery" below.
 
 Whole-file replace, like `health-events.json`: an edit or a delete in the app rewrites the file at
 once, and switching the export off deletes it from every destination.
@@ -484,6 +484,21 @@ once, and switching the export off deletes it from every destination.
 - Starting a session from a routine (app behaviour, not in the file): each set takes the weight of
   the set at the same position among sets of the same kind in the most recent session with that
   exercise, else the routine's weight; reps and set count are the routine's.
+- LAN delivery (2026-11-02, #501, additive; needs a receiver from the release that adds it): with
+  Settings > Local network > Strength log on (`AppSettings.lanSendsStrength`, OFF by default, its own
+  switch, independent of the file export and of the webhook switch), the app POSTs the `strength.log`
+  typed document (the webhook body, app contract section 10) to the same `/health-cache` route, or
+  sends it as the one text frame of `/health-cache-ws`, after the run's daily summary was accepted. The
+  receiver validates it, rebuilds it field by field from an allowlist (unknown keys dropped, strings
+  length-capped, numbers finite, sizes bounded) and replaces `<HEALTH_DATA_DIR>/health-strength.json`
+  with the file shape above (`schema`, `app`, `writtenAt` = the document's `sentAt`, `unit`, `formula`,
+  `sessions`, `records`, `routines`), so `get_strength_log` reads it exactly as it reads the file
+  export. Whole-state replace: a session deleted in the app disappears on the next push. It is sealed
+  when the leg is encrypted (an existing sealed file keeps its salt; `HEALTH_REQUIRE_ENCRYPTED=1`
+  seals a fresh one). Answers `200 {ok,hae,type:"strength.log",sessions}`, `400` when the document has
+  no `data.strengthLog.sessions`. Backward compatible both ways: an older receiver merges the body
+  as a daily summary, finds no metric in it and changes nothing (it still answers 200), and the daily
+  cache is never touched by a `strength.log`.
 - Server: `get_strength_log {exercise?, start?, end?}` (read-only). `exercise` matches a name
   exactly, ignoring case; an unknown name returns `count: 0` with `knownExercises`. A missing file
   answers `available: false`, which means the export is switched off, not that the person does not

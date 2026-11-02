@@ -1,0 +1,41 @@
+{
+  "type": "strength.log",
+  "schema": 1,
+  "id": "msg_7b2d4f60-8a1c-4e3b-9d5f-0c6e8a2b4d71",
+  "app": "1.22",
+  "sentAt": "2026-11-02T07:15:03Z",
+  "data": {
+    "metrics": [],
+    "strengthLog": {
+      "mode": "replace",
+      "unit": "kg",
+      "formula": "strength-v1",
+      "sessions": [
+        {
+          "id": "8C1F3A52-7D4B-4E96-A1C8-5B2E9F0D6A47",
+          "start": "2026-10-28T18:05:00+00:00",
+          "day": "2026-10-28",
+          "minutes": 55,
+          "effort": 7,
+          "volumeKg": 3765,
+          "workingSets": 9,
+          "exercises": [
+            { "name": "Back squat", "volumeKg": 1275, "bestEstimateKg": 99.2,
+              "sets": [ { "reps": 8, "kg": 40, "kind": "warmup" },
+                        { "reps": 5, "kg": 85, "kind": "working", "rpe": 8 } ] },
+            { "name": "Pull-up", "volumeKg": 0, "sets": [ { "reps": 8, "kind": "working" } ] }
+          ]
+        }
+      ],
+      "records": [
+        { "exercise": "Back squat", "bestEstimateKg": 99.2, "bestEstimateDay": "2026-10-28",
+          "heaviestKg": 85, "sessions": 9, "lastDay": "2026-10-28" }
+      ],
+      "routines": [
+        { "id": "5D2E0B91-3C7A-4F18-8E6D-2A9C4B7F1E30", "name": "Squat day", "createdAt": "2026-10-01T09:00:00Z",
+          "lastUsedDay": "2026-10-28",
+          "exercises": [ { "name": "Back squat", "sets": [ { "reps": 5, "kg": 85, "kind": "working" } ] } ] }
+      ]
+    }
+  }
+}
