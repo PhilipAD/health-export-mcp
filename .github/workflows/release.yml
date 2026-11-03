@@ -95,3 +95,38 @@ jobs:
         run: |
           V="$(node -p 'require("./package.json").version')"
           gh release upload "$TAG" "$RUNNER_TEMP/health-export-mcp-$V.cdx.json" --clobber --repo "$GITHUB_REPOSITORY"
+
+  # Post-publish canary. CI and the job above test what we BUILT; this installs what npm SERVES (same
+  # tarball every user gets, provenance attestation included), starts it the way a user does
+  # (HEALTH_LISTEN=1) and pushes a payload over HTTP and the WebSocket the iOS app uses, then reads it
+  # back through the MCP tools. The product sends no telemetry, so this is the only proof the relay
+  # works on the released artifact. On failure it opens an issue; it never unpublishes (a human decides).
+  # Issue PhilipAD/health-export-ai#538.
+  post-publish-canary:
+    needs: npm
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+      issues: write   # open an issue when the published package does not relay
+    env:
+      TAG: ${{ github.event.release.tag_name || inputs.tag }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: ${{ github.event.release.tag_name || inputs.tag }}
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: '24'
+      # --force: this job IS the post-publish moment, and a verifier that silently skips proves nothing.
+      - name: Relay canary against the PUBLISHED package
+        run: node scripts/relay-canary.mjs --version "${TAG#v}" --require-provenance --force --out "$RUNNER_TEMP/canary.json"
+      - name: Open an issue if the published package fails the canary
+        if: failure()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh issue create --repo "$GITHUB_REPOSITORY" \
+            --title "Post-publish canary failed for ${TAG}" \
+            --body "The relay canary failed against the published package ${TAG}. Run: ${GITHUB_SERVER_URL}/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}. Decide on a deprecate or a patch release; nothing was unpublished."
