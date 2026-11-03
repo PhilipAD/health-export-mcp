@@ -1,7 +1,7 @@
 {
   "name": "health-export-mcp",
   "mcpName": "io.github.PhilipAD/health-export-mcp",
-  "version": "1.10.1",
+  "version": "1.10.2",
   "type": "module",
   "description": "MCP server for your own Apple Health data: 194 metrics, 22 tools (20 read-only), 23 prompts. Zero dependencies, local stdio, no account. Try it: npx -y health-export-mcp --demo",
   "keywords": [
