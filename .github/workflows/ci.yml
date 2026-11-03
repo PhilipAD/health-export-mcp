@@ -34,3 +34,7 @@ jobs:
       # is what guards the working directory an actual publish is packed from.
       - name: Publish tarball contains only the server
         run: npm run check:package
+      # The post-publish canary (release.yml) runs scripts/relay-canary.mjs against the registry copy.
+      # Run the same script against this checkout so it cannot rot between releases.
+      - name: Relay canary against this checkout
+        run: node scripts/relay-canary.mjs --dir .
