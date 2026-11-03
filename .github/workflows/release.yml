@@ -119,8 +119,9 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: '24'
+      # --force: this job IS the post-publish moment, and a verifier that silently skips proves nothing.
       - name: Relay canary against the PUBLISHED package
-        run: node scripts/relay-canary.mjs --version "${TAG#v}" --require-provenance --out "$RUNNER_TEMP/canary.json"
+        run: node scripts/relay-canary.mjs --version "${TAG#v}" --require-provenance --force --out "$RUNNER_TEMP/canary.json"
       - name: Open an issue if the published package fails the canary
         if: failure()
         env:
