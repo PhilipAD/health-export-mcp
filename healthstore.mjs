@@ -650,7 +650,7 @@ export async function status() {
     // Additive presence flags for the optional context files, so an agent knows which of the
     // context tools can answer before calling them. Absence means "not exported", never "none".
     contextFiles: DEMO
-      ? { events: true, agentEvents: false, readings: false, manifest: false, profile: true, sessions: true, cycles: true, days: true, sources: false, strength: true, tags: true, labs: true }
+      ? { events: true, agentEvents: false, readings: false, manifest: false, profile: true, sessions: true, cycles: true, days: true, sources: false, strength: true, tags: true }
       : {
           // Either events file: the app's health-events.json or the agent's health-events-agent.json.
           events: !!ev.loadEventsFile() || fileExists(ev.AGENT_EVENTS_FILE),
@@ -669,9 +669,6 @@ export async function status() {
           // health-strength.json (contract section 14): the strength log, only when the user switched
           // its export on in the app.
           strength: fileExists(ev.STRENGTH_FILE),
-          // health-labs.json (contract section 17): lab results, only when the user switched the export
-          // on in the app; written to a picked folder, never iCloud Drive.
-          labs: fileExists(ev.LABS_FILE),
           // health-tags.json (contract section 15): opt-in in the app, so false is the default.
           tags: fileExists(ev.TAGS_FILE),
         },
@@ -709,7 +706,6 @@ export const DATA_FILES = [
   'health-sources.json',
   'health-readings.json',
   'health-strength.json',
-  'health-labs.json',
   'health-tags.json',
   'health-check-ins.json',
 ];

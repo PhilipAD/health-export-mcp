@@ -73,16 +73,6 @@ function writeContextFiles() {
     ] });
   j('health-tags.json', { schema: 1, writtenAt: new Date().toISOString(),
     days: { [isoDay(2)]: ['Creatine', 'Sauna'], [isoDay(1)]: ['Creatine'] }, supplements: ['Creatine'] });
-  j('health-labs.json', { schema: 1, app: '1.21', writtenAt: new Date().toISOString(), source: 'apple-health-records',
-    tests: [
-      { name: 'LDL Cholesterol', loinc: '13457-7', unit: 'mg/dL', results: [
-        { id: 'l1', date: `${isoDay(60)}T09:00:00+00:00`, day: isoDay(60), institution: 'Sample Clinic', fhir: 'R4', value: 131, unit: 'mg/dL', refLow: 0, refHigh: 99 },
-        { id: 'l2', date: `${isoDay(5)}T09:00:00+00:00`, day: isoDay(5), institution: 'Sample Clinic', fhir: 'R4', value: 96, unit: 'mg/dL', refLow: 0, refHigh: 99 },
-      ] },
-      { name: 'Urine Appearance', loinc: '5767-9', results: [
-        { id: 'u1', date: `${isoDay(5)}T09:00:00+00:00`, day: isoDay(5), institution: 'Sample Clinic', fhir: 'R4', valueText: 'Clear' },
-      ] },
-    ] });
   j('health-days.json', { schema: 1, writtenAt: new Date().toISOString(), currentTz: 'Europe/London',
     changes: [{ from: isoDay(4), tz: 'Europe/London', utcOffsetMin: 60 }],
     note: 'Timezone history is recorded from this build onward.' });
@@ -136,11 +126,11 @@ async function main() {
   const tl = await c.req('tools/list');
   const tools = tl.result?.tools || [];
   const names = tools.map((t) => t.name);
-  ok(names.length === 22, `tools/list → ${names.length} tools (expected 22)`);
+  ok(names.length === 21, `tools/list → ${names.length} tools (expected 21)`);
   const WRITERS = ['add_event', 'remove_event'];
   for (const t of ['get_mcp_status', 'list_metrics', 'get_health_metrics', 'get_trends', 'compare_periods',
     'get_structured_export', 'get_intraday', 'query_health_data',
-    'list_events', 'get_profile', 'get_check_ins', 'get_workouts', 'get_sleep_sessions', 'get_strength_log', 'get_lab_results', 'get_cycle_context', 'correlate_metrics',
+    'list_events', 'get_profile', 'get_check_ins', 'get_workouts', 'get_sleep_sessions', 'get_strength_log', 'get_cycle_context', 'correlate_metrics',
     'get_freshness', 'list_tags', 'resolve_metric', ...WRITERS])
     ok(names.includes(t), `tool present: ${t}`);
   ok(tools.filter((t) => !WRITERS.includes(t.name)).every((t) => t.annotations?.readOnlyHint === true && t.annotations?.idempotentHint === true && t.annotations?.openWorldHint === false),
@@ -211,11 +201,6 @@ async function main() {
     && sg.data.records?.length === 1 && /never a load to attempt/.test(sg.data?.note || ''),
     'get_strength_log(back squat) → 2 sessions, filtered to the exercise, estimate caveat stated');
 
-  const lb = await track('get_lab_results', { test: 'ldl' });
-  ok(lb.data?.available === true && lb.data.count === 2 && lb.data.tests.length === 1
-    && /not flagged|nothing is flagged/.test(lb.data?.note || '') && /never converted/.test(lb.data?.note || ''),
-    'get_lab_results(ldl) → 2 results, no interpretation, units never converted');
-
   const cy = await track('get_cycle_context', {});
   ok(cy.data?.available === true && /not predictive/.test(JSON.stringify(cy.data)), 'get_cycle_context → derived, not predictive');
   const lt = await track('list_tags', { kind: 'supplement' });
@@ -242,7 +227,7 @@ async function main() {
   ok(rm.data?.resolved === true && rm.data.metric === 'step_count' && rm.data.inExport === true,
     `resolve_metric(steps) → ${rm.data?.metric} (in export: ${rm.data?.inExport})`);
 
-  ok(calls.length === 22, `exercised ${calls.length} tools (one call each)`);
+  ok(calls.length === 21, `exercised ${calls.length} tools (one call each)`);
   const oversized = calls.filter(([, r]) => (r.text.length * 2) > BUDGET);
   ok(oversized.length === 0, `every answer within the ${BUDGET}-char wire budget${oversized.length ? ` (over: ${oversized.map(([n]) => n).join(', ')})` : ''}`);
 
