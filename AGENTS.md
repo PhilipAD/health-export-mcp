@@ -80,9 +80,20 @@ Run `node gen-deeplinks.mjs` and open the generated VS Code link, or add the ser
 
 Add the `health-export` block (same shape as Claude Desktop's `mcpServers` entry: command `npx`, args `["-y", "health-export-mcp"]`, plus `HEALTH_DATA_DIR` off a Mac) to your OpenClaw MCP servers config, then reload.
 
-## Hermes
+## Hermes Agent
 
-Add the same `health-export` block to your Hermes agent's MCP servers config, then restart the daemon.
+Hermes Agent (Nous Research) reads MCP servers from `~/.hermes/config.yaml`. Add the entry under `mcp_servers` (merge it into the existing map if you already have one). Drop the `env` lines on a Mac using iCloud Drive:
+
+```yaml
+mcp_servers:
+  health-export:
+    command: npx
+    args: ["-y", "health-export-mcp"]
+    env:
+      HEALTH_DATA_DIR: /path/to/folder
+```
+
+Check it with `hermes mcp test health-export`, then run `/reload-mcp` in Hermes (or start a new `hermes chat`). The tools appear as `mcp_health_export_<tool>`.
 
 ## Non-MCP clients, ChatGPT · Gemini · Grok · n8n · Home Assistant
 

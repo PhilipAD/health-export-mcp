@@ -133,7 +133,7 @@ Restart the client and try:
 | **Cursor** | Native MCP | One-click deeplink, or `~/.cursor/mcp.json` |
 | **opencode** | Native MCP | `opencode.json` `mcp` block |
 | **OpenClaw** | Native MCP | Add the server block to your MCP config |
-| **Hermes** | Native MCP | Add the server block to your agent's MCP config |
+| **Hermes Agent** | Native MCP | `mcp_servers` entry in `~/.hermes/config.yaml` |
 | **VS Code** (Copilot / Continue) | Native MCP | One-click deeplink |
 | **ChatGPT · Gemini · Grok** | Webhook* | Consume the app's webhook export |
 | **n8n · Home Assistant** | Webhook* | Trigger automations on the exported JSON |
