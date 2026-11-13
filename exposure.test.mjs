@@ -26,7 +26,6 @@ const DOCUMENTED = new Set([
   'health-readings.json',        // individual blood pressure readings (server 1.8.0+)
   'health-strength.json',        // the strength log, when its export is switched on in the app
   'health-events-agent.json',    // events an agent logged with add_event (server 1.8.0+)
-  'health-labs.json',            // lab results, folder export only (opt-in in the app)
   'health-tags.json',            // tags the user logged, supplements marked (opt-in in the app)
   'health-check-ins.json',       // morning check-ins, only when the user switched the export on
   '.health-manifest.json',       // what the phone last wrote: sizes, hashes, times (server 1.8.0+)

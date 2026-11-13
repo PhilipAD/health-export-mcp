@@ -254,28 +254,6 @@ function buildStrength() {
   return { schema: 1, app: '1.21', writtenAt: WRITTEN_AT, unit: 'kg', formula: 'strength-v1', sessions, records };
 }
 
-// Lab results as the app exports them with "Include in exports" on: LDL and HbA1c over three draws,
-// vitamin D in two units (listed once per unit, never converted) and one text result. Sample values.
-function buildLabs() {
-  const draws = [day(420), day(200), day(25)];
-  const iso = (d) => `${d}T09:00:00+01:00`;
-  const res = (id, i, extra) => ({ id: `${id}-${i}`, date: iso(draws[i]), day: draws[i], institution: 'Sample Clinic', fhir: 'R4', ...extra });
-  return {
-    schema: 1, app: '1.21', writtenAt: WRITTEN_AT, source: 'apple-health-records',
-    tests: [
-      { name: 'Hemoglobin A1c', loinc: '4548-4', unit: '%',
-        results: [5.5, 5.4, 5.3].map((v, i) => res('a1c', i, { value: v, unit: '%', refLow: 4, refHigh: 5.6 })) },
-      { name: 'LDL Cholesterol', loinc: '13457-7', unit: 'mg/dL',
-        results: [131, 118, 96].map((v, i) => res('ldl', i, { value: v, unit: 'mg/dL', refRangeText: '0-99 mg/dL', refLow: 0, refHigh: 99 })) },
-      { name: 'Urine Appearance', loinc: '5767-9', results: [res('urine', 2, { valueText: 'Clear' })] },
-      { name: 'Vitamin D, 25-Hydroxy', loinc: '1989-3', unit: 'ng/mL', splitByUnit: true,
-        results: [res('vd', 1, { value: 22, unit: 'ng/mL', refLow: 30, refHigh: 100 }), res('vd', 2, { value: 28, unit: 'ng/mL', refLow: 30, refHigh: 100 })] },
-      { name: 'Vitamin D, 25-Hydroxy', loinc: '1989-3', unit: 'nmol/L', splitByUnit: true,
-        results: [res('vdh', 0, { value: 61, unit: 'nmol/L', institution: 'Sample Hospital', fhir: 'DSTU2' })] },
-    ],
-  };
-}
-
 function buildCycles() {
   return { schema: 1, writtenAt: WRITTEN_AT, cycleStarts: [day(77), day(49), day(20)] };
 }
@@ -335,7 +313,6 @@ export function demoData() {
     cycles: buildCycles(),
     days: buildDaysFile(),
     strength: buildStrength(),
-    labs: buildLabs(),
     tags: buildTags(),
   };
   return _demo;
