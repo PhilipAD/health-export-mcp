@@ -10,7 +10,9 @@
 //   Both write <HEALTH_DATA_DIR>/.health-cache.json, which the MCP server then reads.
 //   Both also accept ONE typed document, `strength.log` (the app's opt-in "Strength log" switch for
 //   this destination): it is validated and written whole to <HEALTH_DATA_DIR>/health-strength.json,
-//   the file `get_strength_log` reads. Any other `type` is still treated as the daily summary (an
+//   the file `get_strength_log` reads. And `workouts`, merged by id into
+//   <HEALTH_DATA_DIR>/.health-workouts-cache.json (what `get_workouts` reads). Any other `type` is
+//   still treated as the daily summary (an
 //   unknown key is not a metric and is skipped), so a newer app never breaks an older receiver and
 //   the other way round.
 //
@@ -271,6 +273,152 @@ export function sanitizeStrengthLog(doc, now = new Date()) {
   };
 }
 
+// ---- workouts (typed document, the same body the webhook gets as `workouts`) -------------------
+//
+// {type:"workouts", schema:1, id, app, sentAt, data:{workouts:[...]}}: the records the app writes to
+// .health-workouts-cache.json for iCloud and a folder (HealthKitProvider.readWorkouts), which the MCP
+// server's get_workouts reads. Until now the LAN path never carried workouts, so an agent fed only by
+// this receiver could not see a single run. Records ACCUMULATE: merged by HealthKit id (start|type
+// for records written before ids), so a history export in pieces, a resend and a daily push all land
+// once. Every record is rebuilt from scalar fields only (keys allowlisted, strings capped), because
+// the body comes from a LAN client and ends up in an agent's context.
+export const WORKOUTS_TYPE = 'workouts';
+export const WORKOUTS_FILE = '.health-workouts-cache.json';
+const MAX_WORKOUTS_PUSH = 20000, MAX_WORKOUTS_FILE = 100000, MAX_WORKOUT_FIELDS = 60, MAX_ALSO_RECORDED = 10;
+const W_FIELD = /^[A-Za-z][A-Za-z0-9_]{0,40}$/;
+
+function cleanWorkout(w, nested) {
+  const out = {};
+  let n = 0;
+  for (const [k, v] of Object.entries(w)) {
+    if (n >= MAX_WORKOUT_FIELDS || !W_FIELD.test(k)) continue;
+    if (typeof v === 'string') out[k] = v.slice(0, 200);
+    else if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+    else if (typeof v === 'boolean') out[k] = v;
+    // The same session recorded by another source (a Watch run Strava re-wrote): one level only.
+    else if (!nested && k === 'alsoRecordedBy' && Array.isArray(v)) {
+      out[k] = v.slice(0, MAX_ALSO_RECORDED).filter((x) => x && typeof x === 'object' && !Array.isArray(x)).map((x) => cleanWorkout(x, true));
+    } else continue;
+    n++;
+  }
+  return out;
+}
+
+export function sanitizeWorkouts(doc) {
+  const list = doc?.data?.workouts;
+  if (!Array.isArray(list)) return [];
+  return list.slice(0, MAX_WORKOUTS_PUSH)
+    .filter((w) => w && typeof w === 'object' && !Array.isArray(w))
+    .map((w) => cleanWorkout(w, false))
+    .filter((w) => typeof w.start === 'string' && /^\d{4}-\d{2}-\d{2}/.test(w.start));
+}
+
+/// Same identity as the app (ICloudExporter.workoutKey): the HealthKit UUID, else start|type.
+export function workoutKey(w) {
+  if (typeof w?.id === 'string' && w.id) return w.id;
+  return `${w?.start ?? ''}|${w?.type ?? w?.workoutActivityType ?? w?.name ?? ''}`;
+}
+
+export function mergeWorkouts(existing, incoming) {
+  const byKey = new Map();
+  for (const w of Array.isArray(existing) ? existing : []) if (w && typeof w === 'object') byKey.set(workoutKey(w), w);
+  for (const w of incoming) byKey.set(workoutKey(w), w);
+  return [...byKey.values()].sort((a, b) => String(a.start).localeCompare(String(b.start))).slice(-MAX_WORKOUTS_FILE);
+}
+
+function writeWorkouts(dir, doc, passphrase = configuredPassphrase(), sealFresh = false) {
+  const file = path.join(dir, WORKOUTS_FILE);
+  const incoming = sanitizeWorkouts(doc);
+  fs.mkdirSync(dir, { recursive: true });
+  const base = readMergeBase(file, [], passphrase);
+  const merged = mergeWorkouts(base.value, incoming);
+  const out = sealOutput(base.sealedLike, JSON.stringify(merged), passphrase, sealFresh);
+  if (Buffer.byteLength(out) > MAX_CACHE_FILE) throw new Error('workouts file would exceed the size ceiling');
+  atomicWrite(file, out);
+  log(`workouts: ${incoming.length} received -> ${merged.length} in ${file}`);
+  return merged.length;
+}
+
+// ---- context documents: sleep.sessions, timezone.changes, events (the webhook's typed documents) --
+//
+// Same bodies the app sends a webhook (docs/SCHEMA-CONTRACTS.md section 10), turned back into the
+// exact files the app writes for iCloud and a folder, which the MCP server already reads:
+//   events            -> health-events.json   whole-state replace {schema, app, writtenAt, events}
+//   timezone.changes  -> health-days.json     whole-state replace {schema, writtenAt, currentTz, changes, note}
+//   sleep.sessions    -> health-sessions.json replace exactly the waking days in data.coverage
+// Before 1.12 a LAN user had none of these, whatever the app's switches said.
+export const EVENTS_TYPE = 'events', TIMEZONES_TYPE = 'timezone.changes', SESSIONS_TYPE = 'sleep.sessions';
+export const EVENTS_FILE = 'health-events.json', DAYS_FILE = 'health-days.json', SESSIONS_FILE = 'health-sessions.json';
+const CTX_KEY = /^[A-Za-z][A-Za-z0-9_]{0,40}$/;
+const MAX_CTX_ITEMS = 50000, MAX_CTX_DEPTH = 5, MAX_CTX_STRING = 500;
+
+/// A JSON value rebuilt from allowlisted keys, finite numbers, capped strings and bounded arrays and
+/// depth. The body comes from a LAN client and ends up in an agent's context.
+export function cleanContext(v, depth = 0) {
+  if (typeof v === 'string') return v.slice(0, MAX_CTX_STRING);
+  if (typeof v === 'number') return Number.isFinite(v) ? v : undefined;
+  if (typeof v === 'boolean') return v;
+  if (depth >= MAX_CTX_DEPTH || v === null || typeof v !== 'object') return undefined;
+  if (Array.isArray(v)) return v.slice(0, MAX_CTX_ITEMS).map((x) => cleanContext(x, depth + 1)).filter((x) => x !== undefined);
+  const out = {};
+  for (const [k, x] of Object.entries(v)) {
+    if (!CTX_KEY.test(k)) continue;
+    const c = cleanContext(x, depth + 1);
+    if (c !== undefined) out[k] = c;
+  }
+  return out;
+}
+
+const isoNow = () => new Date().toISOString().replace(/\.\d{3}Z$/, 'Z');
+const appOf = (doc) => (typeof doc?.app === 'string' ? doc.app.slice(0, 40) : 'MetricBridge');
+
+/// events -> the health-events.json payload.
+export function eventsFile(doc) {
+  const list = doc?.data?.events?.events;
+  if (!Array.isArray(list)) return null;
+  const events = cleanContext(list, 1).filter((e) => e && typeof e === 'object' && typeof e.date === 'string');
+  return { schema: 1, app: appOf(doc), writtenAt: isoNow(), events };
+}
+
+/// timezone.changes -> the health-days.json payload.
+export function daysFile(doc) {
+  const tz = doc?.data?.timeZones;
+  if (!tz || typeof tz !== 'object' || !Array.isArray(tz.changes)) return null;
+  const clean = cleanContext(tz, 1);
+  delete clean.mode;
+  return { schema: 1, writtenAt: isoNow(), ...clean };
+}
+
+/// sleep.sessions merged into the existing health-sessions.json payload: every stored session whose
+/// waking `day` is inside coverage.fromDay..toDay is replaced by the incoming ones for those days.
+export function sessionsFile(existing, doc) {
+  const cov = doc?.data?.coverage;
+  const list = doc?.data?.sleepSessions;
+  if (!cov || !DAY_RE.test(cov.fromDay ?? '') || !DAY_RE.test(cov.toDay ?? '') || cov.fromDay > cov.toDay || !Array.isArray(list)) return null;
+  const inRange = (d) => typeof d === 'string' && d >= cov.fromDay && d <= cov.toDay;
+  const incoming = cleanContext(list, 1).filter((x) => x && typeof x.start === 'string' && inRange(x.day));
+  const kept = (Array.isArray(existing?.sessions) ? existing.sessions : []).filter((x) => x && !inRange(x.day));
+  const sessions = [...kept, ...incoming].sort((a, b) => String(a.start).localeCompare(String(b.start))).slice(-MAX_CTX_ITEMS);
+  return { schema: 1, app: appOf(doc), writtenAt: isoNow(), sessions };
+}
+
+/// Write one context document. Returns the count stored, or throws a 400 for a body of the right type
+/// but the wrong shape.
+function writeContext(dir, doc, passphrase = configuredPassphrase(), sealFresh = false) {
+  const file = path.join(dir, doc.type === EVENTS_TYPE ? EVENTS_FILE : doc.type === TIMEZONES_TYPE ? DAYS_FILE : SESSIONS_FILE);
+  fs.mkdirSync(dir, { recursive: true });
+  const base = readMergeBase(file, null, passphrase);
+  const out = doc.type === EVENTS_TYPE ? eventsFile(doc) : doc.type === TIMEZONES_TYPE ? daysFile(doc) : sessionsFile(base.value, doc);
+  if (!out) { const e = new Error(`${doc.type}: unexpected body`); e.status = 400; throw e; }
+  const text = sealOutput(base.sealedLike, JSON.stringify(out, null, 2), passphrase, sealFresh);
+  if (Buffer.byteLength(text) > MAX_CACHE_FILE) throw new Error(`${doc.type} would exceed the size ceiling`);
+  atomicWrite(file, text);
+  const n = (out.events || out.changes || out.sessions || []).length;
+  log(`${doc.type} -> ${n} in ${file}`);
+  return n;
+}
+const CONTEXT_TYPES = new Set([EVENTS_TYPE, TIMEZONES_TYPE, SESSIONS_TYPE]);
+
 function writeStrength(dir, doc, passphrase = configuredPassphrase(), sealFresh = false) {
   const file = path.join(dir, STRENGTH_FILE);
   const clean = sanitizeStrengthLog(doc);
@@ -457,6 +605,10 @@ export function startReceiver({
   onCache = (json) => writeCache(dir, json, passphrase(), requireEncrypted()),
   // The `strength.log` typed document (whole-state replace into health-strength.json). Tests inject one.
   onStrength = (doc) => writeStrength(dir, doc, passphrase(), requireEncrypted()),
+  // The `workouts` typed document (accumulating merge into .health-workouts-cache.json). Tests inject one.
+  onWorkouts = (doc) => writeWorkouts(dir, doc, passphrase(), requireEncrypted()),
+  // sleep.sessions / timezone.changes / events (context files). Tests inject one.
+  onContext = (doc) => writeContext(dir, doc, passphrase(), requireEncrypted()),
   // A function, read per request: the environment is the source in production, tests inject one.
   passphrase = () => configuredPassphrase(),
   requireEncrypted = () => process.env.HEALTH_REQUIRE_ENCRYPTED === '1',
@@ -543,6 +695,16 @@ export function startReceiver({
             return finish(422, { ok: false, hae: true, reason, error: e instanceof EnvelopeError ? e.message : 'could not decrypt' });
           }
         }
+        if (CONTEXT_TYPES.has(parsed?.type)) {
+          try { const n = onContext(parsed); finish(200, { ok: true, hae: true, type: parsed.type, count: n }); }
+          catch (e) { log(`${parsed.type} refused`, e.message); finish(e.status || 500, { ok: false, hae: true, error: `${parsed.type}: ` + (e.code || e.message) }); }
+          return;
+        }
+        if (parsed?.type === WORKOUTS_TYPE) {
+          try { const n = onWorkouts(parsed); finish(200, { ok: true, hae: true, type: WORKOUTS_TYPE, workouts: n }); }
+          catch (e) { log('workouts refused', e.message); finish(e.status || 500, { ok: false, hae: true, error: 'workouts: ' + (e.code || e.message) }); }
+          return;
+        }
         if (parsed?.type === STRENGTH_TYPE) {
           try { const n = onStrength(parsed); finish(200, { ok: true, hae: true, type: STRENGTH_TYPE, sessions: n }); }
           catch (e) { log('strength.log refused', e.message); finish(e.status || 500, { ok: false, hae: true, error: 'strength.log: ' + (e.code || e.message) }); }
@@ -585,7 +747,13 @@ export function startReceiver({
         let parsedMsg = JSON.parse(msg);
         if (requireEncrypted() && !isEnvelope(parsedMsg)) throw new Error('plaintext push refused (HEALTH_REQUIRE_ENCRYPTED)');
         if (isEnvelope(parsedMsg)) parsedMsg = openEnvelopeJSON(parsedMsg, passphrase());
-        if (parsedMsg?.type === STRENGTH_TYPE) {
+        if (CONTEXT_TYPES.has(parsedMsg?.type)) {
+          const n = onContext(parsedMsg);
+          socket.write(encodeTextFrame(JSON.stringify({ ok: true, type: parsedMsg.type, count: n })));
+        } else if (parsedMsg?.type === WORKOUTS_TYPE) {
+          const n = onWorkouts(parsedMsg);
+          socket.write(encodeTextFrame(JSON.stringify({ ok: true, type: WORKOUTS_TYPE, workouts: n })));
+        } else if (parsedMsg?.type === STRENGTH_TYPE) {
           const n = onStrength(parsedMsg);
           socket.write(encodeTextFrame(JSON.stringify({ ok: true, type: STRENGTH_TYPE, sessions: n })));
         } else {
