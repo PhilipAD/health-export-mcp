@@ -19,7 +19,7 @@
 //   - On a NON-loopback bind a token is MANDATORY — we fail closed (refuse to listen) without one.
 //   - X-Health-Token is compared in constant time (HEALTH_LISTEN_TOKEN = the iOS pairing code).
 //   - DNS-rebinding defense: reject any request carrying an Origin header (the native app sends none)
-//     and require the Host header to be loopback or a numeric IP literal (not a registered domain).
+//     and require the Host header to be loopback, an IP literal, or a private name (*.ts.net, *.local).
 //   - WS frame reader caps buffered bytes, honours close/ping control frames, and times out idle sockets.
 
 import http from 'node:http';
@@ -29,6 +29,7 @@ import path from 'node:path';
 import os from 'node:os';
 import net from 'node:net';
 import { fileURLToPath } from 'node:url';
+import { execFileSync } from 'node:child_process';
 import { isEnvelope, openEnvelopeJSON, sealEnvelope, parseHeader, configuredPassphrase, EnvelopeError } from './envelope.mjs';
 
 const WS_GUID = '258EAFA5-E914-47DA-95CA-C5AB0DC85B11';
@@ -320,6 +321,129 @@ function writeCache(dir, json, passphrase = configuredPassphrase(), sealFresh = 
   return Object.keys(merged).length;
 }
 
+// ---- what to tell the person at the terminal ----------------------------------------------------
+//
+// The startup banner is the whole user interface of this file: the iOS app's setup step says "type
+// the address it prints". It used to print every non-internal IPv4 address. On a Linux server that
+// was the public IP (firewalled), six Docker bridges and the Tailscale 100.x IP (iOS refuses plain
+// http to it), and the one name that works, <machine>.<tailnet>.ts.net, was not printed at all.
+// So: the Tailscale MagicDNS name first, then private LAN addresses and <host>.local labelled
+// "same Wi-Fi only", and nothing an iPhone cannot reach. Every name printed also passes `hostOk`.
+
+// Virtual and VPN interfaces: Docker/Podman/k8s bridges, VMs, and Tailscale's own (its IP is useless
+// to an iPhone; its NAME is printed instead).
+const SKIP_IFACE = /^(docker\d*|br-|veth|virbr|cni|flannel|cali|vmnet|vboxnet|bridge\d+|podman|tailscale|utun|ts\d|zt|wg|lo)/i;
+
+/// 10/8, 172.16/12, 192.168/16: what a phone on the same Wi-Fi can reach. A public IP is left out on
+/// purpose (on a server it is firewalled, and iOS will not send plain http to it anyway).
+export function isPrivateLAN(ip) {
+  const p = String(ip).split('.').map(Number);
+  if (p.length !== 4 || p.some((n) => !Number.isInteger(n) || n < 0 || n > 255)) return false;
+  return p[0] === 10 || (p[0] === 172 && p[1] >= 16 && p[1] <= 31) || (p[0] === 192 && p[1] === 168);
+}
+
+/// The addresses worth typing on the iPhone, best first. Pure: the caller passes os.networkInterfaces(),
+/// os.hostname() and the Tailscale DNS name (or '').
+export function phoneAddresses({ nets = {}, hostname = '', tailscaleName = '' } = {}) {
+  const ts = String(tailscaleName || '').replace(/\.$/, '').toLowerCase();
+  const tailscale = ts.endsWith('.ts.net') ? [ts] : [];
+  const lan = [];
+  for (const [name, list] of Object.entries(nets || {})) {
+    if (SKIP_IFACE.test(name)) continue;
+    for (const ni of list || []) {
+      if (!ni || ni.internal) continue;
+      if ((ni.family === 'IPv4' || ni.family === 4) && isPrivateLAN(ni.address)) lan.push(ni.address);
+    }
+  }
+  const hn = String(hostname || '').toLowerCase();
+  if (hn && !hn.includes('.')) lan.push(`${hn}.local`);
+  else if (hn.endsWith('.local')) lan.push(hn);
+  return { tailscale, lan: [...new Set(lan)] };
+}
+
+/// This machine's Tailscale MagicDNS name, or '' when Tailscale is not installed or not connected.
+/// Never throws and never waits long: the banner must not hold up the listener.
+export function tailscaleDNSName(run = (cmd, args) => execFileSync(cmd, args, { timeout: 2500, stdio: ['ignore', 'pipe', 'ignore'] }).toString()) {
+  for (const cmd of ['tailscale', '/Applications/Tailscale.app/Contents/MacOS/Tailscale']) {
+    try {
+      const st = JSON.parse(run(cmd, ['status', '--json']));
+      if (st?.BackendState === 'Running' && typeof st?.Self?.DNSName === 'string') return st.Self.DNSName.replace(/\.$/, '');
+    } catch { /* not installed here, not running, or not JSON: try the next one */ }
+  }
+  return '';
+}
+
+/// The startup banner, as lines. Pure, so the wording is tested.
+export function startupLines({ host, port, dir, token, addrs }) {
+  const out = [`listening on ${host}:${port}${token ? ' (token required)' : ' (loopback only)'}`];
+  if (!isLoopback(host)) {
+    const { tailscale = [], lan = [] } = addrs || {};
+    if (tailscale.length || lan.length) {
+      out.push('On your iPhone, in MetricBridge > My local network, type one of these:');
+      for (const a of tailscale) out.push(`  ${a}:${port}   (Tailscale: works wherever your iPhone has Tailscale on)`);
+      for (const a of lan) out.push(`  ${a}:${port}   (same Wi-Fi only)`);
+      if (!tailscale.length) out.push('Away from this Wi-Fi? Install Tailscale here and on the iPhone, then restart this: its .ts.net name will be listed first.');
+    } else {
+      out.push('No address an iPhone can reach was found. On the same Wi-Fi, use this computer\'s LAN IP; anywhere else, install Tailscale and use its .ts.net name.');
+    }
+  }
+  out.push(`Agent: set HEALTH_DATA_DIR=${dir} in your agent's MetricBridge (health-export) server settings.`);
+  out.push('Waiting for the first export from the iPhone (tap Sync Now in the app)...');
+  return out;
+}
+
+/// `receive --print-systemd`: a systemd user service that keeps the receiver running on a Linux box
+/// (survives logout and reboot). Printed, never installed: the person reads it and runs it. The token
+/// goes in a 0600 EnvironmentFile, not the command line, so it is not in `ps` or shell history.
+export function systemdSetup({ env = process.env, nodeDir = path.dirname(process.execPath) } = {}) {
+  const dir = path.resolve(expandTilde(env.HEALTH_DATA_DIR || '~/MetricBridge'));
+  const settings = [
+    `HEALTH_LISTEN_HOST=${env.HEALTH_LISTEN_HOST && !isLoopback(env.HEALTH_LISTEN_HOST) ? env.HEALTH_LISTEN_HOST : '0.0.0.0'}`,
+    `HEALTH_LISTEN_TOKEN=${env.HEALTH_LISTEN_TOKEN || 'PASTE-THE-PAIRING-CODE-FROM-THE-APP'}`,
+    `HEALTH_DATA_DIR=${dir}`,
+  ];
+  if (env.HEALTH_LISTEN_PORT) settings.push(`HEALTH_LISTEN_PORT=${env.HEALTH_LISTEN_PORT}`);
+  return [
+    '# Keep the MetricBridge receiver running (Linux, systemd user service). Run these lines as the',
+    '# user who should own the data. Nothing here needs root.',
+    '',
+    '# 1) Settings. The pairing code lives here, readable only by you, not on the command line.',
+    'mkdir -p ~/.config/metricbridge && chmod 700 ~/.config/metricbridge',
+    "cat > ~/.config/metricbridge/receiver.env <<'EOF'",
+    ...settings,
+    'EOF',
+    'chmod 600 ~/.config/metricbridge/receiver.env',
+    '',
+    '# 2) The service.',
+    'mkdir -p ~/.config/systemd/user',
+    "cat > ~/.config/systemd/user/metricbridge-receiver.service <<'EOF'",
+    '[Unit]',
+    'Description=MetricBridge receiver (iPhone exports into HEALTH_DATA_DIR)',
+    'After=network-online.target',
+    '',
+    '[Service]',
+    'EnvironmentFile=%h/.config/metricbridge/receiver.env',
+    `Environment=PATH=${nodeDir}:/usr/local/bin:/usr/bin:/bin`,
+    `ExecStart=${path.join(nodeDir, 'npx')} -y health-export-mcp@latest receive`,
+    'Restart=on-failure',
+    'RestartSec=5',
+    '',
+    '[Install]',
+    'WantedBy=default.target',
+    'EOF',
+    '',
+    '# 3) Start it now and at every boot, and keep it running after you log out.',
+    'systemctl --user daemon-reload',
+    'systemctl --user enable --now metricbridge-receiver',
+    'loginctl enable-linger "$USER"',
+    '',
+    '# Its output (the address to type on the iPhone is at the top):',
+    'journalctl --user -u metricbridge-receiver -e',
+    '',
+    `# Your agent reads ${dir}: set HEALTH_DATA_DIR to it in the agent's MetricBridge server settings.`,
+  ].join('\n');
+}
+
 /// Start the HTTP + WebSocket listener. Returns the http.Server, or null if it refused to start.
 export function startReceiver({
   dir = expandTilde(process.env.HEALTH_DATA_DIR || '.'),
@@ -337,6 +461,17 @@ export function startReceiver({
   passphrase = () => configuredPassphrase(),
   requireEncrypted = () => process.env.HEALTH_REQUIRE_ENCRYPTED === '1',
 } = {}) {
+  // The banner ends with "waiting for the first export"; say when it arrives, once.
+  let firstExport = true;
+  const takeCache = (json) => {
+    const n = onCache(json);
+    if (firstExport) {
+      firstExport = false;
+      log(n > 0 ? `First export received (${n} metrics). Your agent can read it now.`
+                : 'An export arrived with no metrics in it: check the app has Apple Health access, then Sync Now.');
+    }
+    return n;
+  };
   // Fail closed: never expose an unauthenticated write endpoint on the network.
   if (!isLoopback(host) && !token) {
     log(`REFUSING to listen on non-loopback ${host} without HEALTH_LISTEN_TOKEN: set the iOS pairing code as the token.`);
@@ -413,7 +548,7 @@ export function startReceiver({
           catch (e) { log('strength.log refused', e.message); finish(e.status || 500, { ok: false, hae: true, error: 'strength.log: ' + (e.code || e.message) }); }
           return;
         }
-        try { const n = onCache(parsed); finish(200, { ok: true, hae: true, metrics: n }); }
+        try { const n = takeCache(parsed); finish(200, { ok: true, hae: true, metrics: n }); }
         catch (e) { log('write failed', e.message); finish(500, { ok: false, hae: true, error: 'write failed: ' + (e.code || e.message) }); } // 500 = disk/write
       });
       return;
@@ -454,7 +589,7 @@ export function startReceiver({
           const n = onStrength(parsedMsg);
           socket.write(encodeTextFrame(JSON.stringify({ ok: true, type: STRENGTH_TYPE, sessions: n })));
         } else {
-          const n = onCache(parsedMsg);
+          const n = takeCache(parsedMsg);
           socket.write(encodeTextFrame(JSON.stringify({ ok: true, metrics: n })));
         }
       }
@@ -471,16 +606,9 @@ export function startReceiver({
     else log('server error', e.message);
   });
   server.listen(port, host, () => {
-    log(`listening on ${host}:${port}${token ? ' (token required)' : ' (loopback only)'}`);
-    if (!isLoopback(host)) {                        // print the exact address(es) to type on the iPhone
-      const addrs = [];
-      const nets = os.networkInterfaces();
-      for (const name of Object.keys(nets)) for (const ni of nets[name] || []) {
-        if (ni.family === 'IPv4' && !ni.internal) addrs.push(ni.address);
-      }
-      const hn = os.hostname(); addrs.push(hn.includes('.') ? hn : `${hn}.local`);
-      for (const a of addrs) log(`  -> on your iPhone, enter:  ${a}:${port}`);
-    }
+    const addrs = isLoopback(host) ? null
+      : phoneAddresses({ nets: os.networkInterfaces(), hostname: os.hostname(), tailscaleName: tailscaleDNSName() });
+    for (const line of startupLines({ host, port, dir: path.resolve(dir), token, addrs })) log(line);
   });
   return server;
 }

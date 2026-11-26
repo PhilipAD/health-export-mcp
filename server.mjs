@@ -21,7 +21,7 @@ import * as ev from './events.mjs';
 import { PROMPTS } from './prompts.mjs';
 import { DEMO } from './demo.mjs';
 
-const SERVER = { name: 'health-export-ai', version: '1.11.0' };
+const SERVER = { name: 'health-export-ai', version: '1.11.1' };
 const DEFAULT_PROTOCOL = '2025-06-18';
 const log = (...a) => process.stderr.write('[mcp] ' + a.join(' ') + '\n');
 
@@ -472,6 +472,8 @@ Usage:
                                       sessions) is within N hours and no stale iCloud copy is detected,
                                       else 1 (cron gate)
   node server.mjs receive             run the LAN receiver standalone (no MCP; binds 127.0.0.1 by default)
+  node server.mjs receive --print-systemd
+                                      print a systemd user service that keeps the receiver running (Linux)
   node server.mjs --help              this text
 
 Environment:
@@ -628,6 +630,11 @@ if (IS_MAIN) {
     // Standalone receiver: no MCP stdio, just the LAN listener. receiver.mjs binds 127.0.0.1
     // unless HEALTH_LISTEN_HOST says otherwise, and refuses a non-loopback bind without a token.
     const r = await import('./receiver.mjs');
+    if (argv.includes('--print-systemd')) {
+      // Printed, never installed: the person reads the service file and runs the lines themselves.
+      process.stdout.write(r.systemdSetup() + '\n');
+      process.exit(0);
+    }
     if (!r.startReceiver()) process.exit(1);
   } else {
     serveStdio();

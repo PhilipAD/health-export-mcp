@@ -192,6 +192,7 @@ The server ships 23 prompts over `prompts/list` / `prompts/get`: daily brief, we
 node server.mjs --doctor            # diagnostics: files, sizes, schema, freshness, pairing
 node server.mjs status --max-age 24 # exit 0 if data is fresh, 1 if stale or a stale iCloud copy (cron gate)
 node server.mjs receive             # standalone LAN receiver (binds 127.0.0.1 by default)
+node server.mjs receive --print-systemd   # Linux: print a service that keeps the receiver running
 node server.mjs --help
 ```
 
