@@ -10,7 +10,9 @@
 //   Both write <HEALTH_DATA_DIR>/.health-cache.json, which the MCP server then reads.
 //   Both also accept ONE typed document, `strength.log` (the app's opt-in "Strength log" switch for
 //   this destination): it is validated and written whole to <HEALTH_DATA_DIR>/health-strength.json,
-//   the file `get_strength_log` reads. Any other `type` is still treated as the daily summary (an
+//   the file `get_strength_log` reads. And `workouts`, merged by id into
+//   <HEALTH_DATA_DIR>/.health-workouts-cache.json (what `get_workouts` reads). Any other `type` is
+//   still treated as the daily summary (an
 //   unknown key is not a metric and is skipped), so a newer app never breaks an older receiver and
 //   the other way round.
 //
@@ -271,6 +273,72 @@ export function sanitizeStrengthLog(doc, now = new Date()) {
   };
 }
 
+// ---- workouts (typed document, the same body the webhook gets as `workouts`) -------------------
+//
+// {type:"workouts", schema:1, id, app, sentAt, data:{workouts:[...]}}: the records the app writes to
+// .health-workouts-cache.json for iCloud and a folder (HealthKitProvider.readWorkouts), which the MCP
+// server's get_workouts reads. Until now the LAN path never carried workouts, so an agent fed only by
+// this receiver could not see a single run. Records ACCUMULATE: merged by HealthKit id (start|type
+// for records written before ids), so a history export in pieces, a resend and a daily push all land
+// once. Every record is rebuilt from scalar fields only (keys allowlisted, strings capped), because
+// the body comes from a LAN client and ends up in an agent's context.
+export const WORKOUTS_TYPE = 'workouts';
+export const WORKOUTS_FILE = '.health-workouts-cache.json';
+const MAX_WORKOUTS_PUSH = 20000, MAX_WORKOUTS_FILE = 100000, MAX_WORKOUT_FIELDS = 60, MAX_ALSO_RECORDED = 10;
+const W_FIELD = /^[A-Za-z][A-Za-z0-9_]{0,40}$/;
+
+function cleanWorkout(w, nested) {
+  const out = {};
+  let n = 0;
+  for (const [k, v] of Object.entries(w)) {
+    if (n >= MAX_WORKOUT_FIELDS || !W_FIELD.test(k)) continue;
+    if (typeof v === 'string') out[k] = v.slice(0, 200);
+    else if (typeof v === 'number' && Number.isFinite(v)) out[k] = v;
+    else if (typeof v === 'boolean') out[k] = v;
+    // The same session recorded by another source (a Watch run Strava re-wrote): one level only.
+    else if (!nested && k === 'alsoRecordedBy' && Array.isArray(v)) {
+      out[k] = v.slice(0, MAX_ALSO_RECORDED).filter((x) => x && typeof x === 'object' && !Array.isArray(x)).map((x) => cleanWorkout(x, true));
+    } else continue;
+    n++;
+  }
+  return out;
+}
+
+export function sanitizeWorkouts(doc) {
+  const list = doc?.data?.workouts;
+  if (!Array.isArray(list)) return [];
+  return list.slice(0, MAX_WORKOUTS_PUSH)
+    .filter((w) => w && typeof w === 'object' && !Array.isArray(w))
+    .map((w) => cleanWorkout(w, false))
+    .filter((w) => typeof w.start === 'string' && /^\d{4}-\d{2}-\d{2}/.test(w.start));
+}
+
+/// Same identity as the app (ICloudExporter.workoutKey): the HealthKit UUID, else start|type.
+export function workoutKey(w) {
+  if (typeof w?.id === 'string' && w.id) return w.id;
+  return `${w?.start ?? ''}|${w?.type ?? w?.workoutActivityType ?? w?.name ?? ''}`;
+}
+
+export function mergeWorkouts(existing, incoming) {
+  const byKey = new Map();
+  for (const w of Array.isArray(existing) ? existing : []) if (w && typeof w === 'object') byKey.set(workoutKey(w), w);
+  for (const w of incoming) byKey.set(workoutKey(w), w);
+  return [...byKey.values()].sort((a, b) => String(a.start).localeCompare(String(b.start))).slice(-MAX_WORKOUTS_FILE);
+}
+
+function writeWorkouts(dir, doc, passphrase = configuredPassphrase(), sealFresh = false) {
+  const file = path.join(dir, WORKOUTS_FILE);
+  const incoming = sanitizeWorkouts(doc);
+  fs.mkdirSync(dir, { recursive: true });
+  const base = readMergeBase(file, [], passphrase);
+  const merged = mergeWorkouts(base.value, incoming);
+  const out = sealOutput(base.sealedLike, JSON.stringify(merged), passphrase, sealFresh);
+  if (Buffer.byteLength(out) > MAX_CACHE_FILE) throw new Error('workouts file would exceed the size ceiling');
+  atomicWrite(file, out);
+  log(`workouts: ${incoming.length} received -> ${merged.length} in ${file}`);
+  return merged.length;
+}
+
 function writeStrength(dir, doc, passphrase = configuredPassphrase(), sealFresh = false) {
   const file = path.join(dir, STRENGTH_FILE);
   const clean = sanitizeStrengthLog(doc);
@@ -457,6 +525,8 @@ export function startReceiver({
   onCache = (json) => writeCache(dir, json, passphrase(), requireEncrypted()),
   // The `strength.log` typed document (whole-state replace into health-strength.json). Tests inject one.
   onStrength = (doc) => writeStrength(dir, doc, passphrase(), requireEncrypted()),
+  // The `workouts` typed document (accumulating merge into .health-workouts-cache.json). Tests inject one.
+  onWorkouts = (doc) => writeWorkouts(dir, doc, passphrase(), requireEncrypted()),
   // A function, read per request: the environment is the source in production, tests inject one.
   passphrase = () => configuredPassphrase(),
   requireEncrypted = () => process.env.HEALTH_REQUIRE_ENCRYPTED === '1',
@@ -543,6 +613,11 @@ export function startReceiver({
             return finish(422, { ok: false, hae: true, reason, error: e instanceof EnvelopeError ? e.message : 'could not decrypt' });
           }
         }
+        if (parsed?.type === WORKOUTS_TYPE) {
+          try { const n = onWorkouts(parsed); finish(200, { ok: true, hae: true, type: WORKOUTS_TYPE, workouts: n }); }
+          catch (e) { log('workouts refused', e.message); finish(e.status || 500, { ok: false, hae: true, error: 'workouts: ' + (e.code || e.message) }); }
+          return;
+        }
         if (parsed?.type === STRENGTH_TYPE) {
           try { const n = onStrength(parsed); finish(200, { ok: true, hae: true, type: STRENGTH_TYPE, sessions: n }); }
           catch (e) { log('strength.log refused', e.message); finish(e.status || 500, { ok: false, hae: true, error: 'strength.log: ' + (e.code || e.message) }); }
@@ -585,7 +660,10 @@ export function startReceiver({
         let parsedMsg = JSON.parse(msg);
         if (requireEncrypted() && !isEnvelope(parsedMsg)) throw new Error('plaintext push refused (HEALTH_REQUIRE_ENCRYPTED)');
         if (isEnvelope(parsedMsg)) parsedMsg = openEnvelopeJSON(parsedMsg, passphrase());
-        if (parsedMsg?.type === STRENGTH_TYPE) {
+        if (parsedMsg?.type === WORKOUTS_TYPE) {
+          const n = onWorkouts(parsedMsg);
+          socket.write(encodeTextFrame(JSON.stringify({ ok: true, type: WORKOUTS_TYPE, workouts: n })));
+        } else if (parsedMsg?.type === STRENGTH_TYPE) {
           const n = onStrength(parsedMsg);
           socket.write(encodeTextFrame(JSON.stringify({ ok: true, type: STRENGTH_TYPE, sessions: n })));
         } else {
