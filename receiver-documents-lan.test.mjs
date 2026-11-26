@@ -1,4 +1,4 @@
-// `workouts` over the LAN receiver: the app's typed document is sanitised, merged by HealthKit id into
+// Typed documents over the LAN receiver (workouts, events, time zones, sleep sessions): the app's typed document is sanitised, merged by HealthKit id into
 // .health-workouts-cache.json and read by the MCP server's workout reader. Until 1.12 the LAN path
 // carried no workouts, so an agent fed only by the receiver never saw a run (reported 2026-11-26 with
 // years of Strava runs to backfill).
@@ -92,4 +92,43 @@ test('a wrong token is refused before anything is written', async () => {
   });
   assert.equal(status, 401);
   assert.ok(!onDisk().some((w) => w.id === 'EVIL'));
+});
+
+// ---- sleep.sessions, timezone.changes, events: the webhook's context documents over LAN ----------
+const { cleanContext, EVENTS_FILE, DAYS_FILE, SESSIONS_FILE } = await import('./receiver.mjs');
+const env = (type, data) => ({ type, schema: 1, id: 'm-' + Math.random(), app: 'MetricBridge 1.26 (300)', sentAt: new Date().toISOString(), data: { metrics: [], ...data } });
+const read = (f) => JSON.parse(fs.readFileSync(path.join(DIR, f), 'utf8'));
+
+test('events replace health-events.json whole, in the app file shape', async () => {
+  let r = await post(env('events', { events: { mode: 'replace', events: [{ id: 'e1', date: '2026-11-01', type: 'travel', title: 'Lisbon' }, { id: 'e2', date: '2026-11-10', type: 'illness', title: 'Cold' }] } }));
+  assert.equal(r.status, 200); assert.equal(r.body.count, 2);
+  r = await post(env('events', { events: { mode: 'replace', events: [{ id: 'e2', date: '2026-11-10', type: 'illness', title: 'Cold' }] } }));
+  const f = read(EVENTS_FILE);
+  assert.equal(f.schema, 1); assert.deepEqual(f.events.map((e) => e.id), ['e2'], 'a deleted event disappears');
+});
+
+test('timezone.changes replace health-days.json without the mode marker', async () => {
+  const r = await post(env('timezone.changes', { timeZones: { mode: 'replace', currentTz: 'Europe/London', changes: [{ from: '2026-11-01', tz: 'Europe/Lisbon', utcOffsetMin: 0 }], note: 'n' } }));
+  assert.equal(r.status, 200);
+  const f = read(DAYS_FILE);
+  assert.equal(f.currentTz, 'Europe/London'); assert.equal(f.changes.length, 1); assert.equal(f.mode, undefined);
+});
+
+test('sleep.sessions replace exactly the covered waking days', async () => {
+  const s = (day, start, h) => ({ day, start, end: start, hours: h, nap: false, tz: 'Europe/London', segments: [{ stage: 'deep', start, end: start, source: 'com.apple.health' }] });
+  await post(env('sleep.sessions', { coverage: { fromDay: '2026-11-01', toDay: '2026-11-03', mode: 'replace_days' }, sleepSessions: [s('2026-11-01', '2026-10-31T23:00:00+00:00', 7), s('2026-11-02', '2026-11-01T23:00:00+00:00', 6), s('2026-11-03', '2026-11-02T23:00:00+00:00', 8)] }));
+  // A later resend of the 2nd only: the 2nd is replaced, the 1st and 3rd stay.
+  const r = await post(env('sleep.sessions', { coverage: { fromDay: '2026-11-02', toDay: '2026-11-02', mode: 'replace_days' }, sleepSessions: [s('2026-11-02', '2026-11-01T23:30:00+00:00', 6.5)] }));
+  assert.equal(r.status, 200);
+  const f = read(SESSIONS_FILE);
+  assert.deepEqual(f.sessions.map((x) => [x.day, x.hours]), [['2026-11-01', 7], ['2026-11-02', 6.5], ['2026-11-03', 8]]);
+  assert.equal(f.sessions[1].segments[0].stage, 'deep');
+  const bad = await post(env('sleep.sessions', { sleepSessions: [] }));
+  assert.equal(bad.status, 400, 'no coverage: refused, nothing replaced');
+});
+
+test('context values are cleaned: bad keys, long strings, deep nesting and non-finite numbers are dropped', () => {
+  const c = cleanContext({ ok: 'x'.repeat(900), 'bad key': 1, n: Infinity, deep: { a: { b: { c: { d: { e: 1 } } } } }, list: [1, 'a', null] });
+  assert.equal(c.ok.length, 500); assert.equal(c['bad key'], undefined); assert.equal(c.n, undefined);
+  assert.deepEqual(c.list, [1, 'a']); assert.equal(c.deep.a.b.c.d, undefined);
 });
