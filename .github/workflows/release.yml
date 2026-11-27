@@ -105,7 +105,7 @@ jobs:
   post-publish-canary:
     needs: npm
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    timeout-minutes: 25   # up to 10 min waiting for npm read replicas (relay-canary.mjs), then the run
     permissions:
       contents: read
       issues: write   # open an issue when the published package does not relay

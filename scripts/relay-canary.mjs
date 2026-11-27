@@ -53,10 +53,24 @@ try {
   if (localDir) {
     resolved = `local:${path.basename(path.resolve(localDir))}`;
   } else {
-  const time = JSON.parse(npm(['view', PKG, 'time', '--json']));
-  resolved = version === 'latest' ? npm(['view', PKG, 'version']) : version;
-  const published = new Date(time[resolved]);
-  if (isNaN(published)) throw new Error(`no publish time for ${resolved}`);
+  // The release job runs this seconds after `npm publish`. npmjs serves the packument with
+  // `cache-control: max-age=300` and its read replicas can lag the write by minutes (npm/cli#8936), so the
+  // version under test is often missing from `npm view ... time` at first. That is not a relay failure:
+  // poll with --prefer-online (revalidate instead of trusting npm's local HTTP cache) for a bounded budget
+  // before giving up with exit 2 ("could not run"). v1.11.1 and v1.12.0 both hit this (issues #42, #44).
+  const budgetMs = Number(process.env.CANARY_RESOLVE_BUDGET_MS ?? (version === 'latest' ? 0 : 600000));
+  const pollMs = Number(process.env.CANARY_RESOLVE_POLL_MS ?? 20000);
+  const deadline = Date.now() + budgetMs;
+  let published;
+  for (let attempt = 1; ; attempt++) {
+    const time = JSON.parse(npm(['view', PKG, 'time', '--json', '--prefer-online']));
+    resolved = version === 'latest' ? npm(['view', PKG, 'version', '--prefer-online']) : version;
+    published = new Date(time[resolved]);
+    if (!isNaN(published)) break;
+    if (Date.now() + pollMs > deadline) throw new Error(`no publish time for ${resolved} after ${attempt} registry reads (${Math.round(budgetMs / 1000)}s budget)`);
+    console.log(`registry does not list ${PKG}@${resolved} yet (read ${attempt}), waiting ${pollMs / 1000}s`);
+    await sleep(pollMs);
+  }
   const dayMs = 86400000;
   const publishDay = Date.UTC(published.getUTCFullYear(), published.getUTCMonth(), published.getUTCDate());
   const ageDays = Math.floor((Date.now() - publishDay) / dayMs);
@@ -90,7 +104,7 @@ try {
       catch (e) { if (attempt === 8) throw e; console.log(`registry not serving ${PKG}@${resolved} yet (attempt ${attempt}/8), waiting 15s`); await sleep(15000); }
     }
     if (requireProvenance) {
-      const att = npm(['view', `${PKG}@${resolved}`, 'dist.attestations.provenance.predicateType']);
+      const att = npm(['view', `${PKG}@${resolved}`, 'dist.attestations.provenance.predicateType', '--prefer-online']);
       check('published with an npm provenance attestation (SLSA)', att.startsWith('https://slsa.dev/provenance'), att || 'no dist.attestations');
     }
     execFileSync('tar', ['-xzf', path.join(work, tgz), '-C', work]);
